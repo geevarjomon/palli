@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nerchas - Piravom Valiyapalli</title>
+    <meta name="description" content="Nerchas offerings at Piravom Valiyapalli.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-logo">
+                <i class="fas fa-cross"></i>
+                <span>Piravom Valiyapalli</span>
+            </div>
+            <ul class="nav-menu">
+                <li><a href="index.html#home" class="nav-link">Home</a></li>
+                <li><a href="/history" class="nav-link">History</a></li>
+                <li><a href="hkmedia.html#gallery" class="nav-link">Gallery</a></li>
+                <li><a href="/nerchas" class="nav-link active">Nerchas</a></li>
+                <li><a href="index.html#live" class="nav-link">Live Stream</a></li>
+                <li><a href="index.html#festivals" class="nav-link">Events</a></li>
+                <li><a href="index.html#visit" class="nav-link">Visit</a></li>
+                <li><a href="/orders.html" class="nav-link">Orders</a></li>
+            </ul>
+            <div class="hamburger">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+        </div>
+    </nav>
+
+    <section class="about fade-in" style="padding-top: 140px;">
+        <div class="container">
+            <h2 class="section-title">Nerchas</h2>
+            <div class="nerchas-home-grid" id="nerchas-page-grid"></div>
+        </div>
+    </section>
+
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-bottom">
+                <p>&copy; 2024 Piravom Valiyapalli St. Mary's Orthodox Syrian Cathedral. All rights reserved.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script src="script.js"></script>
+    <script>
+        const fallbackNerchasPage = [
+            { english: 'anitha', malayalam: 'അനിത', price: 10, image: '' },
+            { english: 'v. kurbana', malayalam: 'വി. കുർബാന', price: 10, image: '' },
+            { english: 'prarthana', malayalam: 'പ്രാർത്ഥന', price: 10, image: '' },
+            { english: 'panthrandu paithangulude nercha', malayalam: 'പന്ത്രണ്ടു പൈതങ്ങളുടെ നേർച്ച', price: 500, image: '' }
+        ];
+
+        async function getOfferings() {
+            try {
+                const res = await fetch('/api/nerchas');
+                if (!res.ok) throw new Error('Failed');
+                const data = await res.json();
+                if (Array.isArray(data.offerings) && data.offerings.length) return data.offerings;
+                return fallbackNerchasPage;
+            } catch (e) {
+                return fallbackNerchasPage;
+            }
+        }
+
+        function renderOfferings(items) {
+            const grid = document.getElementById('nerchas-page-grid');
+            if (!grid) return;
+            grid.innerHTML = '';
+            items.forEach((item, idx) => {
+                const card = document.createElement('div');
+                card.className = 'nercha-compact-card';
+                card.innerHTML = `
+                    <div class="nercha-coupon-wrap">
+                        <img src="${getNerchaImageSrc(item, idx)}" alt="${item.english || 'Nercha'}" class="nercha-coupon-image">
+                    </div>
+                    <div class="nercha-ml">${item.malayalam || ''}</div>
+                    <div class="nercha-en">${item.english || ''}</div>
+                    <div class="nercha-price">Price: ${item.price ?? 0}</div>
+                    <button type="button" class="btn btn-primary nercha-buy-btn" style="margin-top:0.75rem;">Buy</button>
+                `;
+                card.querySelector('.nercha-buy-btn').addEventListener('click', () => openNerchaPurchaseModal(item));
+                grid.appendChild(card);
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            const offerings = await getOfferings();
+            renderOfferings(offerings);
+            setInterval(async () => {
+                const refreshed = await getOfferings();
+                renderOfferings(refreshed);
+            }, 5000);
+        });
+    </script>
+</body>
+</html>

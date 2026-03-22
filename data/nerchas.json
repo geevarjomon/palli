@@ -1,0 +1,28 @@
+{
+  "offerings": [
+    {
+      "english": "anitha",
+      "malayalam": "അനിത",
+      "price": 10,
+      "image": ""
+    },
+    {
+      "english": "prarthana",
+      "malayalam": "പ്രാർത്ഥന",
+      "price": 10,
+      "image": ""
+    },
+    {
+      "english": "v. kurbana",
+      "malayalam": "വി. കുർബാന",
+      "price": 10,
+      "image": ""
+    },
+    {
+      "english": "panthrandu paithangulude nercha",
+      "malayalam": "പന്ത്രണ്ടു പൈതങ്ങളുടെ നേർച്ച",
+      "price": 500,
+      "image": ""
+    }
+  ]
+}

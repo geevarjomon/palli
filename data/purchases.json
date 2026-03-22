@@ -1,0 +1,57 @@
+{
+  "purchases": [
+    {
+      "malayalam": "അനിത",
+      "english": "anitha",
+      "price": 10,
+      "date": "March 21, 2026"
+    },
+    {
+      "malayalam": "വി. കുർബാന",
+      "english": "v. kurbana",
+      "price": 10,
+      "date": "March 21, 2026"
+    },
+    {
+      "malayalam": "പന്ത്രണ്ടു പൈതങ്ങളുടെ നേർച്ച",
+      "english": "panthrandu paithangulude nercha",
+      "price": 500,
+      "date": "March 21, 2026"
+    },
+    {
+      "malayalam": "പന്ത്രണ്ടു പൈതങ്ങളുടെ നേർച്ച",
+      "english": "panthrandu paithangulude nercha",
+      "price": 500,
+      "date": "March 21, 2026"
+    },
+    {
+      "name": "dfgwsg",
+      "malayalam": "പ്രാർത്ഥന",
+      "english": "prarthana",
+      "price": 10,
+      "date": "March 22, 2026",
+      "time": "02:11 AM",
+      "timestamp": 1774125682
+    },
+    {
+      "name": "vbedfhbed",
+      "malayalam": "വി. കുർബാന",
+      "english": "v. kurbana",
+      "price": 10,
+      "date": "March 22, 2026",
+      "time": "02:11 AM",
+      "timestamp": 1774125685
+    },
+    {
+      "name": "bruce",
+      "address": "hgrfehetrahteh",
+      "phone": "45hghrtgh",
+      "malayalam": "പ്രാർത്ഥന",
+      "english": "prarthana",
+      "price": 10,
+      "date": "March 22, 2026",
+      "time": "12:16 PM",
+      "timestamp": 1774161977
+    }
+  ]
+}

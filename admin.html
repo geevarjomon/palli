@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel – Piravom Valiyapalli</title>
+    <meta name="description" content="Admin panel for Piravom Valiyapalli.">
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-logo">
+                <i class="fas fa-cross"></i>
+                <span>Piravom Valiyapalli</span>
+            </div>
+            <ul class="nav-menu">
+                <li><a href="index.html#home" class="nav-link">Home</a></li>
+                <li><a href="/history" class="nav-link">History</a></li>
+                <li><a href="hkmedia.html#gallery" class="nav-link">Gallery</a></li>
+                <li><a href="/nerchas" class="nav-link">Nerchas</a></li>
+                <li><a href="index.html#live" class="nav-link">Live Stream</a></li>
+                <li><a href="index.html#festivals" class="nav-link">Events</a></li>
+                <li><a href="index.html#visit" class="nav-link">Visit</a></li>
+                <li><a href="/orders.html" class="nav-link">Orders</a></li>
+            </ul>
+            <div class="hamburger">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+        </div>
+    </nav>
+
+    <section class="about fade-in" style="padding-top: 140px;">
+        <div class="container">
+            <div id="login-panel">
+                <h2 class="section-title" style="margin-bottom: 2rem;">Admin Login</h2>
+
+                <div class="contact-grid" style="grid-template-columns: 1fr; gap: 1rem;">
+                    <div class="contact-form">
+                        <form id="login-form">
+                            <div class="form-group">
+                                <input type="text" id="admin-username" name="username" placeholder="Username" autocomplete="username" required>
+                            </div>
+                            <div class="form-group">
+                                <input type="password" id="admin-password" name="password" placeholder="Password" autocomplete="current-password" required>
+                            </div>
+                            <div class="form-actions" style="margin-top: 1rem;">
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="fas fa-lock"></i>
+                                    Login
+                                </button>
+                            </div>
+                            <div id="login-error" style="color: #dc3545; margin-top: 1rem; font-weight: 600;"></div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <div id="admin-panel" style="display: none;">
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem;">
+                    <h2 class="section-title" style="margin: 0; flex: 1 1 auto;">Admin Panel</h2>
+                    <button type="button" id="logout-btn" class="btn btn-secondary-dark">
+                        <i class="fas fa-sign-out-alt"></i>
+                        Logout
+                    </button>
+                </div>
+
+                <div class="admin-two-col">
+                    <div class="contact-form">
+                        <h3 style="font-size: 1.5rem; margin-bottom: 1rem; color: var(--deep-maroon);">Gallery Management</h3>
+                        <form id="upload-form">
+                            <div class="form-group">
+                                <input type="file" id="gallery-files" name="media" accept="image/*,video/*" multiple required>
+                            </div>
+                            <div class="form-actions" style="margin-top: 1rem;">
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="fas fa-upload"></i>
+                                    Upload
+                                </button>
+                            </div>
+                            <div id="upload-status" style="margin-top: 1rem; font-weight: 600;"></div>
+                        </form>
+                        <div id="gallery-admin-grid" class="gallery-admin-grid"></div>
+                    </div>
+
+                    <div class="contact-form">
+                        <h3 style="font-size: 1.5rem; margin-bottom: 1rem; color: var(--deep-maroon);">Live Stream URL</h3>
+                        <div class="form-group">
+                            <input type="url" id="live-url-input" placeholder="https://www.facebook.com/...">
+                        </div>
+                        <div class="form-actions" style="margin-top: 0.75rem; margin-bottom: 1.5rem;">
+                            <button type="button" id="save-live-url-btn" class="btn btn-primary">
+                                <i class="fas fa-save"></i>
+                                Update Live URL
+                            </button>
+                        </div>
+                        <div id="live-url-status" style="margin-bottom: 1.25rem; font-weight: 600;"></div>
+
+                        <h3 style="font-size: 1.5rem; margin-bottom: 1rem; color: var(--deep-maroon);">Edit Offerings (/nerchas)</h3>
+                        <div id="offerings-editor" style="display: flex; flex-direction: column; gap: 1.25rem;"></div>
+                        <div class="form-actions" style="margin-top: 1.25rem;">
+                            <button type="button" id="add-offering-btn" class="btn btn-secondary-dark">
+                                <i class="fas fa-plus"></i>
+                                Add Nercha
+                            </button>
+                        </div>
+                        <div id="offerings-save-status" style="margin-top: 1rem; font-weight: 600;">Auto-save enabled</div>
+                    </div>
+                </div>
+
+                <div class="contact-form" style="margin-top: 2rem;">
+                    <h3 style="font-size: 1.5rem; margin-bottom: 1rem; color: var(--deep-maroon);">Calendar Management</h3>
+                    <p style="color: var(--medium-gray); margin-bottom: 1rem; font-size: 0.95rem;">Upload or delete calendar images. Images are stored in assets/calendar/ and displayed on the site.</p>
+                    <form id="calendar-upload-form">
+                        <div class="form-group">
+                            <input type="file" id="calendar-files" name="calendar" accept="image/*" multiple>
+                        </div>
+                        <div class="form-actions" style="margin-top: 1rem;">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-upload"></i>
+                                Upload Calendar Images
+                            </button>
+                        </div>
+                        <div id="calendar-upload-status" style="margin-top: 1rem; font-weight: 600;"></div>
+                    </form>
+                    <div id="calendar-admin-grid" class="gallery-admin-grid" style="margin-top: 1rem;"></div>
+                </div>
+
+                <div style="margin-top: 2rem;" class="contact-form">
+                    <h3 style="font-size: 1.5rem; margin-bottom: 1rem; color: var(--deep-maroon);">Purchased Offerings</h3>
+                    <ul id="purchases-list" style="list-style: none; padding-left: 0; margin: 0; display: flex; flex-direction: column; gap: 0.75rem;"></ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-bottom">
+                <p>&copy; 2024 Piravom Valiyapalli St. Mary's Orthodox Syrian Cathedral. All rights reserved.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script src="script.js"></script>
+    <script>
+        const loginForm = document.getElementById('login-form');
+        const loginError = document.getElementById('login-error');
+        const loginPanel = document.getElementById('login-panel');
+        const adminPanel = document.getElementById('admin-panel');
+        const logoutBtn = document.getElementById('logout-btn');
+
+        const uploadForm = document.getElementById('upload-form');
+        const galleryFiles = document.getElementById('gallery-files');
+        const uploadStatus = document.getElementById('upload-status');
+
+        const offeringsEditor = document.getElementById('offerings-editor');
+        const addOfferingBtn = document.getElementById('add-offering-btn');
+        const offeringsSaveStatus = document.getElementById('offerings-save-status');
+
+        const purchasesList = document.getElementById('purchases-list');
+        const galleryAdminGrid = document.getElementById('gallery-admin-grid');
+        const liveUrlInput = document.getElementById('live-url-input');
+        const saveLiveUrlBtn = document.getElementById('save-live-url-btn');
+        const liveUrlStatus = document.getElementById('live-url-status');
+
+        function showAdminUI() {
+            loginPanel.style.display = 'none';
+            adminPanel.style.display = 'block';
+        }
+
+        function showLoginUI() {
+            adminPanel.style.display = 'none';
+            loginPanel.style.display = 'block';
+        }
+
+        function renderOfferings(offerings) {
+            offeringsEditor.innerHTML = '';
+            offerings.forEach((item, idx) => {
+                const row = document.createElement('div');
+                row.style.border = '1px solid rgba(114, 47, 55, 0.15)';
+                row.style.borderRadius = '12px';
+                row.style.padding = '1rem';
+                row.style.background = 'rgba(250, 248, 245, 0.6)';
+
+                const imgName = (item.image || '').trim();
+                const previewSrc = imgName ? `assets/coupon/${imgName}` : '';
+                const safeImgAttr = imgName.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+
+                row.innerHTML = `
+                    <div style="display:flex; gap: 1rem; flex-wrap: wrap; align-items: flex-start;">
+                        <div style="flex: 0 0 auto;">
+                            <div style="font-weight: 700; color: var(--deep-maroon); margin-bottom: 0.5rem;">Image</div>
+                            ${previewSrc ? `<img class="admin-nercha-preview" src="${previewSrc}" alt="" style="width: 88px; height: 88px; object-fit: cover; border-radius: 10px; border: 2px solid rgba(212, 175, 55, 0.5); display: block;">` : '<img class="admin-nercha-preview" alt="" style="display:none;width:88px;height:88px;">'}
+                            <input type="hidden" class="admin-image" value="${safeImgAttr}">
+                            <div style="margin-top: 0.5rem;">
+                                <input type="file" class="admin-nercha-file" data-idx="${idx}" accept="image/*" style="max-width: 220px; font-size: 0.85rem;">
+                            </div>
+                        </div>
+                        <div style="flex: 1 1 220px;">
+                            <div style="font-weight: 700; color: var(--deep-maroon); margin-bottom: 0.5rem;">Malayalam</div>
+                            <input class="admin-ml" data-idx="${idx}" type="text" value="${(item.malayalam || '').replace(/"/g, '&quot;')}" style="width:100%; padding: 12px; border-radius: 10px; border: 2px solid transparent; font-family: 'Inter', sans-serif;">
+                        </div>
+                        <div style="flex: 1 1 220px;">
+                            <div style="font-weight: 700; color: var(--deep-maroon); margin-bottom: 0.5rem;">English</div>
+                            <input class="admin-en" data-idx="${idx}" type="text" value="${(item.english || '').replace(/"/g, '&quot;')}" style="width:100%; padding: 12px; border-radius: 10px; border: 2px solid transparent; font-family: 'Inter', sans-serif;">
+                        </div>
+                    </div>
+                    <div style="display:flex; gap: 1rem; flex-wrap: wrap; margin-top: 1rem; align-items: center;">
+                        <div style="flex: 1 1 160px;">
+                            <div style="font-weight: 700; color: var(--deep-maroon); margin-bottom: 0.5rem;">Price</div>
+                            <input class="admin-price" data-idx="${idx}" type="number" min="0" value="${item.price ?? 0}" style="width:100%; padding: 12px; border-radius: 10px; border: 2px solid transparent; font-family: 'Inter', sans-serif;">
+                        </div>
+                        <div style="flex: 0 0 auto; align-self: end;">
+                            <button type="button" class="btn btn-secondary-dark admin-delete-offering" data-idx="${idx}">
+                                <i class="fas fa-trash"></i>
+                                Delete
+                            </button>
+                        </div>
+                    </div>
+                `;
+
+                offeringsEditor.appendChild(row);
+            });
+
+            offeringsEditor.querySelectorAll('.admin-delete-offering').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const idx = Number(btn.dataset.idx);
+                    const n = offeringsEditor.querySelectorAll('.admin-ml').length;
+                    const rows = [];
+                    for (let i = 0; i < n; i++) {
+                        if (i === idx) continue;
+                        rows.push({
+                            malayalam: offeringsEditor.querySelectorAll('.admin-ml')[i].value,
+                            english: offeringsEditor.querySelectorAll('.admin-en')[i].value,
+                            price: offeringsEditor.querySelectorAll('.admin-price')[i].value,
+                            image: (offeringsEditor.querySelectorAll('.admin-image')[i] || {}).value || ''
+                        });
+                    }
+                    renderOfferings(rows);
+                    autoSaveOfferings();
+                });
+            });
+
+            offeringsEditor.querySelectorAll('.admin-ml, .admin-en, .admin-price').forEach(input => {
+                input.addEventListener('input', () => {
+                    autoSaveOfferings();
+                });
+            });
+
+            offeringsEditor.querySelectorAll('.admin-nercha-file').forEach(input => {
+                input.addEventListener('change', async () => {
+                    const file = input.files && input.files[0];
+                    if (!file) return;
+                    const idx = Number(input.dataset.idx);
+                    const formData = new FormData();
+                    formData.append('nercha_image', file);
+                    try {
+                        offeringsSaveStatus.textContent = 'Uploading image...';
+                        const res = await fetch('/api/nercha-image/upload', {
+                            method: 'POST',
+                            credentials: 'include',
+                            body: formData
+                        });
+                        if (!res.ok) throw new Error('fail');
+                        const data = await res.json().catch(() => ({}));
+                        const fn = data.filename;
+                        if (!fn) throw new Error('no filename');
+                        const hiddens = offeringsEditor.querySelectorAll('.admin-image');
+                        const previews = offeringsEditor.querySelectorAll('.admin-nercha-preview');
+                        hiddens[idx].value = fn;
+                        previews[idx].src = `assets/coupon/${fn}`;
+                        previews[idx].style.display = 'block';
+                        await autoSaveOfferings();
+                    } catch (e) {
+                        offeringsSaveStatus.textContent = 'Image upload failed';
+                    }
+                });
+            });
+        }
+
+        async function apiGet(url) {
+            const res = await fetch(url, { credentials: 'include' });
+            if (!res.ok) throw new Error('Request failed');
+            return await res.json();
+        }
+
+        async function apiPost(url, body) {
+            const res = await fetch(url, {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            if (!res.ok) throw new Error('Request failed');
+            return await res.json().catch(() => ({}));
+        }
+
+        async function apiPut(url, body) {
+            const res = await fetch(url, {
+                method: 'PUT',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            if (!res.ok) throw new Error('Request failed');
+            return await res.json().catch(() => ({}));
+        }
+
+        async function loadAdminData() {
+            const offeringsData = await apiGet('/api/nerchas');
+            renderOfferings(Array.isArray(offeringsData.offerings) ? offeringsData.offerings : []);
+
+            const purchasesData = await apiGet('/api/purchases');
+            purchasesList.innerHTML = '';
+            const purchases = Array.isArray(purchasesData.purchases) ? purchasesData.purchases : [];
+            purchases.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+
+            if (purchases.length === 0) {
+                const li = document.createElement('li');
+                li.style.fontWeight = '600';
+                li.style.color = 'var(--medium-gray)';
+                li.textContent = 'No purchases yet.';
+                purchasesList.appendChild(li);
+            } else {
+                purchases.forEach(p => {
+                    const li = document.createElement('li');
+                    li.style.fontWeight = '600';
+                    li.style.color = 'var(--dark-charcoal)';
+                    li.textContent = `Name: ${p.name || '-'} | Address: ${p.address || '-'} | Phone: ${p.phone || '-'} | Offering: ${p.malayalam || p.english || '-'} | Date: ${p.date || '-'} | Time: ${p.time || '-'}`;
+                    purchasesList.appendChild(li);
+                });
+            }
+
+            const galleryData = await apiGet('/api/gallery');
+            const galleryItems = Array.isArray(galleryData.items) ? galleryData.items : [];
+            if (galleryAdminGrid) {
+                galleryAdminGrid.innerHTML = '';
+                galleryItems.forEach(item => {
+                    const div = document.createElement('div');
+                    div.className = 'gallery-admin-item';
+                    const thumb = item.type === 'video'
+                        ? `<video class="gallery-admin-thumb" src="assets/gallery/${item.filename}" muted playsinline preload="metadata"></video>`
+                        : `<img class="gallery-admin-thumb" src="assets/gallery/${item.filename}" alt="">`;
+                    div.innerHTML = `
+                        ${thumb}
+                        <span style="font-size:0.8rem;word-break:break-word;text-align:center;font-weight:600;">${item.filename}</span>
+                        <span style="font-size:0.75rem;color:var(--medium-gray);text-align:center;">${item.date || '-'}</span>
+                        <button type="button" class="btn btn-secondary-dark gallery-delete-btn" data-file="${item.filename}"><i class="fas fa-trash"></i> Delete</button>
+                    `;
+                    galleryAdminGrid.appendChild(div);
+                });
+
+                galleryAdminGrid.querySelectorAll('.gallery-delete-btn').forEach(btn => {
+                    btn.addEventListener('click', async () => {
+                        const filename = btn.dataset.file;
+                        try {
+                            await apiPost('/api/gallery/delete', { filename });
+                            await loadAdminData();
+                        } catch (e) {}
+                    });
+                });
+            }
+
+            try {
+                const live = await apiGet('/api/live-link');
+                liveUrlInput.value = live.url || '';
+            } catch (e) {}
+
+            try {
+                const cal = await apiGet('/api/calendar');
+                const gridEl = document.getElementById('calendar-admin-grid');
+                if (gridEl) {
+                    const imgs = Array.isArray(cal.images) ? cal.images : [];
+                    gridEl.innerHTML = '';
+                    imgs.forEach((fn) => {
+                        const div = document.createElement('div');
+                        div.className = 'gallery-admin-item';
+                        div.innerHTML = `
+                            <img class="gallery-admin-thumb" src="assets/calendar/${fn}" alt="">
+                            <span style="font-size:0.8rem;word-break:break-word;text-align:center;font-weight:600;">${fn}</span>
+                            <button type="button" class="btn btn-secondary-dark calendar-delete-btn" data-file="${fn.replace(/"/g, '&quot;')}"><i class="fas fa-trash"></i> Delete</button>
+                        `;
+                        gridEl.appendChild(div);
+                    });
+                    gridEl.querySelectorAll('.calendar-delete-btn').forEach(btn => {
+                        btn.addEventListener('click', async () => {
+                            const filename = btn.dataset.file;
+                            try {
+                                await apiPost('/api/calendar/delete', { filename });
+                                await loadAdminData();
+                            } catch (e) {}
+                        });
+                    });
+                    if (imgs.length === 0) {
+                        const p = document.createElement('p');
+                        p.style.cssText = 'color:var(--medium-gray);font-weight:600;margin:0;';
+                        p.textContent = 'No calendar images in assets/calendar/. Upload to add.';
+                        gridEl.appendChild(p);
+                    }
+                }
+            } catch (e) {}
+        }
+
+        async function autoSaveOfferings() {
+            const mlInputs = offeringsEditor.querySelectorAll('.admin-ml');
+            const enInputs = offeringsEditor.querySelectorAll('.admin-en');
+            const priceInputs = offeringsEditor.querySelectorAll('.admin-price');
+            const imageInputs = offeringsEditor.querySelectorAll('.admin-image');
+            const offerings = Array.from(mlInputs).map((_, i) => ({
+                malayalam: mlInputs[i].value.trim(),
+                english: enInputs[i].value.trim(),
+                price: Number(priceInputs[i].value || 0),
+                image: (imageInputs[i] && imageInputs[i].value) ? imageInputs[i].value.trim() : ''
+            }));
+            try {
+                offeringsSaveStatus.textContent = 'Saving...';
+                await apiPut('/api/nerchas', { offerings });
+                offeringsSaveStatus.textContent = 'Saved';
+            } catch (e) {
+                offeringsSaveStatus.textContent = 'Save failed';
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            try {
+                await apiGet('/api/nerchas');
+                showAdminUI();
+                await loadAdminData();
+            } catch (e) {
+                showLoginUI();
+            }
+        });
+
+        if (loginForm) {
+            loginForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                loginError.textContent = '';
+
+                const username = document.getElementById('admin-username').value.trim();
+                const password = document.getElementById('admin-password').value.trim();
+
+                try {
+                    await fetch('/api/login', {
+                        method: 'POST',
+                        credentials: 'include',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ username, password })
+                    }).then(res => {
+                        if (!res.ok) throw new Error('Invalid login');
+                        return res.json().catch(() => ({}));
+                    });
+
+                    showAdminUI();
+                    await loadAdminData();
+                } catch (err) {
+                    loginError.textContent = 'Invalid username or password.';
+                }
+            });
+        }
+
+        if (logoutBtn) {
+            logoutBtn.addEventListener('click', async () => {
+                try {
+                    await fetch('/api/logout', { method: 'POST', credentials: 'include' });
+                } finally {
+                    showLoginUI();
+                    loginError.textContent = '';
+                }
+            });
+        }
+
+        if (uploadForm) {
+            uploadForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                uploadStatus.textContent = '';
+
+                const files = galleryFiles.files;
+                if (!files || files.length === 0) {
+                    uploadStatus.textContent = 'Please select files to upload.';
+                    return;
+                }
+
+                const formData = new FormData();
+                for (const file of files) {
+                    formData.append('media', file);
+                }
+
+                try {
+                    uploadStatus.textContent = 'Uploading...';
+                    const res = await fetch('/api/gallery/upload', {
+                        method: 'POST',
+                        credentials: 'include',
+                        body: formData
+                    });
+                    if (!res.ok) throw new Error('Upload failed');
+                    const data = await res.json().catch(() => ({}));
+                    uploadStatus.textContent = data.message || 'Upload successful.';
+                    await loadAdminData();
+                } catch (err) {
+                    uploadStatus.textContent = 'Upload failed.';
+                }
+            });
+        }
+
+        if (addOfferingBtn) {
+            addOfferingBtn.addEventListener('click', () => {
+                const n = offeringsEditor.querySelectorAll('.admin-ml').length;
+                const rows = [];
+                for (let i = 0; i < n; i++) {
+                    rows.push({
+                        malayalam: offeringsEditor.querySelectorAll('.admin-ml')[i].value,
+                        english: offeringsEditor.querySelectorAll('.admin-en')[i].value,
+                        price: Number(offeringsEditor.querySelectorAll('.admin-price')[i].value || 0),
+                        image: (offeringsEditor.querySelectorAll('.admin-image')[i] || {}).value || ''
+                    });
+                }
+                rows.push({ malayalam: '', english: '', price: 0, image: '' });
+                renderOfferings(rows);
+                autoSaveOfferings();
+            });
+        }
+
+        const calendarUploadForm = document.getElementById('calendar-upload-form');
+        const calendarFilesInput = document.getElementById('calendar-files');
+        const calendarUploadStatus = document.getElementById('calendar-upload-status');
+        if (calendarUploadForm) {
+            calendarUploadForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                if (!calendarFilesInput || !calendarFilesInput.files || calendarFilesInput.files.length === 0) {
+                    if (calendarUploadStatus) calendarUploadStatus.textContent = 'Please select image(s).';
+                    return;
+                }
+                const formData = new FormData();
+                for (const file of calendarFilesInput.files) {
+                    formData.append('calendar', file);
+                }
+                try {
+                    if (calendarUploadStatus) calendarUploadStatus.textContent = 'Uploading...';
+                    const res = await fetch('/api/calendar/upload', {
+                        method: 'POST',
+                        credentials: 'include',
+                        body: formData
+                    });
+                    if (!res.ok) throw new Error('fail');
+                    const data = await res.json().catch(() => ({}));
+                    if (calendarUploadStatus) calendarUploadStatus.textContent = data.message || 'Upload successful.';
+                    calendarUploadForm.reset();
+                    await loadAdminData();
+                } catch (err) {
+                    if (calendarUploadStatus) calendarUploadStatus.textContent = 'Upload failed.';
+                }
+            });
+        }
+
+        if (saveLiveUrlBtn) {
+            saveLiveUrlBtn.addEventListener('click', async () => {
+                try {
+                    await apiPut('/api/live-link', { url: liveUrlInput.value.trim() });
+                    liveUrlStatus.textContent = 'Live URL updated';
+                } catch (e) {
+                    liveUrlStatus.textContent = 'Update failed';
+                }
+            });
+        }
+    </script>
+</body>
+</html>
+
