@@ -588,6 +588,12 @@ function ensureNerchaPurchaseModal() {
                     <label for="nercha-purchase-phone">Phone Number</label>
                     <input type="tel" id="nercha-purchase-phone" name="phone" required autocomplete="tel" placeholder="Phone number">
                 </div>
+                <p class="nercha-purchase-modal-sub" style="font-size:0.86rem; margin-bottom: 0.9rem;">
+                    By proceeding, you agree to the
+                    <a href="/terms.html" target="_blank" rel="noopener noreferrer">Terms &amp; Conditions</a>,
+                    <a href="/privacy.html" target="_blank" rel="noopener noreferrer">Privacy Policy</a>, and
+                    <a href="/refund.html" target="_blank" rel="noopener noreferrer">Refund Policy</a>.
+                </p>
                 <div class="nercha-purchase-modal-actions">
                     <button type="button" class="btn btn-secondary-dark" data-nercha-modal-close>Cancel</button>
                     <button type="submit" class="btn btn-primary">Submit</button>

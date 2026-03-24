@@ -4,9 +4,14 @@ import mimetypes
 import secrets
 import time
 import urllib.parse
-from http.server import BaseHTTPRequestHandler, HTTPServer
-from socketserver import ThreadingMixIn
+import logging
+import threading
+import hmac
+import hashlib
+import errno
 from pathlib import Path
+
+from flask import Flask, Response, make_response, request, g
 
 
 ROOT_DIR = Path(__file__).resolve().parent
@@ -19,6 +24,8 @@ OFFERINGS_PATH = DATA_DIR / "nerchas.json"
 PURCHASES_PATH = DATA_DIR / "purchases.json"
 GALLERY_META_PATH = DATA_DIR / "gallery.json"
 LIVE_LINK_PATH = DATA_DIR / "live_link.json"
+CALENDAR_FS_LOCK_PATH = DATA_DIR / "_calendar_fs_lock"
+COUPON_FS_LOCK_PATH = DATA_DIR / "_coupon_fs_lock"
 
 SESSION_COOKIE = "admin_session"
 SESSION_TTL_SECONDS = 60 * 60 * 6  # 6 hours
@@ -67,13 +74,30 @@ def ensure_data_files():
 def read_json_file(path: Path):
     if not path.exists():
         return {}
-    return json.loads(path.read_text(encoding="utf-8"))
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        # Avoid crashes if a partial write ever happened.
+        return {}
 
 
 def write_json_file(path: Path, payload):
-    tmp_path = path.with_suffix(".tmp")
-    tmp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    tmp_path.replace(path)
+    directory = path.parent
+    directory.mkdir(parents=True, exist_ok=True)
+    # Unique temp file avoids cross-process clobbering.
+    tmp_path = directory / (path.name + f".tmp_{os.getpid()}_{threading.get_ident()}_{secrets.token_hex(6)}")
+    data = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+    with open(tmp_path, "wb") as f:
+        f.write(data)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(str(tmp_path), str(path))
+    # Best-effort directory fsync to reduce the chance of rename without persistence.
+    try:
+        with open(directory, "rb") as d:
+            os.fsync(d.fileno())
+    except Exception:
+        pass
 
 
 def sanitize_filename(name: str) -> str:
@@ -113,15 +137,19 @@ def parse_multipart_files(content_type: str, body: bytes, field_name: str):
             continue
 
         filename = None
+        part_content_type = None
         for line in headers_text.split("\r\n"):
             if "Content-Disposition" in line and 'filename="' in line:
                 filename = line.split('filename="', 1)[1].split('"', 1)[0]
                 break
 
+            if line.lower().startswith("content-type:"):
+                part_content_type = line.split(":", 1)[1].strip()
+
         if not filename:
             continue
 
-        files.append((filename, payload))
+        files.append((filename, payload, part_content_type))
 
     return files
 
@@ -138,49 +166,135 @@ def format_time_label(ts=None):
     return time.strftime("%I:%M %p", time.localtime(ts))
 
 
-def get_cookie(handler: BaseHTTPRequestHandler, name: str):
-    cookie_header = handler.headers.get("Cookie")
-    if not cookie_header:
-        return None
-    parts = cookie_header.split(";")
-    for part in parts:
-        part = part.strip()
-        if not part:
-            continue
-        if part.startswith(name + "="):
-            return part.split("=", 1)[1]
-    return None
+app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = int(os.environ.get("MAX_UPLOAD_BYTES", str(100 * 1024 * 1024)))
+
+_logger = logging.getLogger("piravomvalliyapalli")
+if not _logger.handlers:
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    _logger.addHandler(_handler)
+_logger.setLevel(logging.INFO)
+
+_LOCK_TIMEOUT_SECONDS = float(os.environ.get("LOCK_TIMEOUT_SECONDS", "10"))
+_LOCK_POLL_SECONDS = float(os.environ.get("LOCK_POLL_SECONDS", "0.1"))
 
 
-def is_logged_in(handler: BaseHTTPRequestHandler):
-    token = get_cookie(handler, SESSION_COOKIE)
-    if not token:
-        return False
-    sess = SESSIONS.get(token)
-    if not sess:
-        return False
-    if time.time() - sess["created_at"] > SESSION_TTL_SECONDS:
-        SESSIONS.pop(token, None)
-        return False
-    return True
+class _InterProcessFileLock:
+    """
+    Cross-process (and cross-thread) lock using a lock file.
+    Used to protect JSON read-modify-write and to prevent corruption/races.
+    """
+
+    _local = threading.local()
+
+    def __init__(self, target: Path):
+        self.target = target
+        self.lock_path = Path(str(target) + ".lock")
+        self.fp = None
+        self._key = str(self.lock_path)
+
+    def __enter__(self):
+        counts = getattr(self._local, "counts", None)
+        if counts is None:
+            counts = {}
+            self._local.counts = counts
+
+        current = counts.get(self._key, 0)
+        if current > 0:
+            counts[self._key] = current + 1
+            return self
+
+        # Ensure lock file exists.
+        self.lock_path.parent.mkdir(parents=True, exist_ok=True)
+        self.fp = open(self.lock_path, "a+b")
+
+        deadline = time.monotonic() + _LOCK_TIMEOUT_SECONDS
+        acquired = False
+
+        if os.name == "nt":
+            import msvcrt
+
+            while time.monotonic() < deadline:
+                try:
+                    # Lock first byte as a sentinel.
+                    msvcrt.locking(self.fp.fileno(), msvcrt.LK_NBLCK, 1)
+                    acquired = True
+                    break
+                except OSError as e:
+                    if e.errno in (errno.EACCES, errno.EAGAIN):
+                        time.sleep(_LOCK_POLL_SECONDS)
+                        continue
+                    raise
+        else:
+            import fcntl
+
+            while time.monotonic() < deadline:
+                try:
+                    fcntl.flock(self.fp.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    acquired = True
+                    break
+                except OSError as e:
+                    if e.errno in (errno.EACCES, errno.EAGAIN):
+                        time.sleep(_LOCK_POLL_SECONDS)
+                        continue
+                    raise
+
+        if not acquired:
+            try:
+                self.fp.close()
+            except Exception:
+                pass
+            self.fp = None
+            raise TimeoutError(f"Could not acquire lock for {self.lock_path}")
+
+        counts[self._key] = 1
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        counts = getattr(self._local, "counts", None) or {}
+        current = counts.get(self._key, 0)
+        if current <= 1:
+            try:
+                if self.fp:
+                    if os.name == "nt":
+                        import msvcrt
+
+                        msvcrt.locking(self.fp.fileno(), msvcrt.LK_UNLCK, 1)
+                    else:
+                        import fcntl
+
+                        fcntl.flock(self.fp.fileno(), fcntl.LOCK_UN)
+            finally:
+                try:
+                    if self.fp:
+                        self.fp.close()
+                except Exception:
+                    pass
+                self.fp = None
+                counts.pop(self._key, None)
+        else:
+            counts[self._key] = current - 1
+        self._local.counts = counts
 
 
-def json_response(handler: BaseHTTPRequestHandler, status: int, payload):
+def _lock_for_path(path: Path):
+    return _InterProcessFileLock(path)
+
+
+def json_response(status: int, payload: dict):
     data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-    handler.send_response(status)
-    handler.send_header("Content-Type", "application/json; charset=utf-8")
-    handler.send_header("Content-Length", str(len(data)))
-    handler.end_headers()
-    handler.wfile.write(data)
+    resp = make_response(data, status)
+    resp.headers["Content-Type"] = "application/json; charset=utf-8"
+    resp.headers["Content-Length"] = str(len(data))
+    return resp
 
 
-def not_found(handler: BaseHTTPRequestHandler):
-    handler.send_response(404)
-    handler.end_headers()
-    handler.wfile.write(b"Not Found")
+def not_found():
+    return Response(b"Not Found", status=404, content_type="text/plain; charset=utf-8")
 
 
-def serve_static(handler: BaseHTTPRequestHandler, url_path: str):
+def serve_static(url_path: str):
     # Map "pretty paths" to existing files
     if url_path == "/":
         file_path = ROOT_DIR / "index.html"
@@ -191,317 +305,566 @@ def serve_static(handler: BaseHTTPRequestHandler, url_path: str):
     elif url_path == "/history":
         file_path = ROOT_DIR / "history.html"
     else:
-        # strip leading slash and prevent path traversal
         safe_rel = url_path.lstrip("/")
         safe_path = (ROOT_DIR / safe_rel).resolve()
         if ROOT_DIR not in safe_path.parents and safe_path != ROOT_DIR / "index.html":
-            return not_found(handler)
+            return not_found()
         file_path = safe_path
 
     if not file_path.exists() or not file_path.is_file():
-        return not_found(handler)
+        return not_found()
 
     mime_type, _ = mimetypes.guess_type(str(file_path))
     mime_type = mime_type or "application/octet-stream"
-
     data = file_path.read_bytes()
-    handler.send_response(200)
-    handler.send_header("Content-Type", mime_type)
-    handler.send_header("Content-Length", str(len(data)))
-    handler.end_headers()
-    handler.wfile.write(data)
+    resp = Response(data, status=200, mimetype=mime_type)
+    resp.headers["Content-Length"] = str(len(data))
+    return resp
 
 
-class Handler(BaseHTTPRequestHandler):
-    server_version = "PiravomLocalServer/1.0"
+_SESSION_HMAC_SECRET = os.environ.get("SESSION_HMAC_SECRET")
+if not _SESSION_HMAC_SECRET:
+    # Deterministic secret across gunicorn workers (same ROOT_DIR path).
+    _SESSION_HMAC_SECRET = hashlib.sha256(str(ROOT_DIR).encode("utf-8")).hexdigest()
+_SESSION_HMAC_SECRET_BYTES = _SESSION_HMAC_SECRET.encode("utf-8")
 
-    def _read_body(self):
-        length = int(self.headers.get("Content-Length") or 0)
-        if length <= 0:
-            return b""
-        return self.rfile.read(length)
 
-    def _parse_json_body(self):
-        raw = self._read_body()
-        if not raw:
-            return {}
-        return json.loads(raw.decode("utf-8"))
+def _sign_session(nonce: str, ts_int: int) -> str:
+    msg = f"{nonce}|{ts_int}".encode("utf-8")
+    return hmac.new(_SESSION_HMAC_SECRET_BYTES, msg, hashlib.sha256).hexdigest()
 
-    def do_GET(self):
-        parsed = urllib.parse.urlparse(self.path)
-        path = parsed.path
 
-        if path == "/api/nerchas":
-            data = read_json_file(OFFERINGS_PATH)
-            offerings = []
-            for item in data.get("offerings", []):
-                if not isinstance(item, dict):
-                    continue
-                row = dict(item)
-                row.setdefault("image", "")
-                offerings.append(row)
-            return json_response(self, 200, {"offerings": offerings})
+def _make_session_cookie_value(ts_int=None) -> str:
+    if ts_int is None:
+        ts_int = int(time.time())
+    nonce = secrets.token_urlsafe(16)
+    sig = _sign_session(nonce, int(ts_int))
+    return f"{nonce}.{int(ts_int)}.{sig}"
 
-        if path == "/api/purchases":
-            if not is_logged_in(self):
-                return json_response(self, 401, {"error": "unauthorized"})
-            data = read_json_file(PURCHASES_PATH)
-            return json_response(self, 200, {"purchases": data.get("purchases", [])})
 
-        if path == "/api/gallery":
-            data = read_json_file(GALLERY_META_PATH)
-            return json_response(self, 200, {"items": data.get("items", [])})
+def is_logged_in() -> bool:
+    value = request.cookies.get(SESSION_COOKIE)
+    if not value:
+        return False
+    parts = value.split(".")
+    if len(parts) != 3:
+        return False
+    nonce, ts_s, sig = parts
+    try:
+        ts_int = int(ts_s)
+    except Exception:
+        return False
+    expected = _sign_session(nonce, ts_int)
+    if not hmac.compare_digest(expected, sig):
+        return False
+    if time.time() - ts_int > SESSION_TTL_SECONDS:
+        return False
+    return True
 
-        if path == "/api/live-link":
-            data = read_json_file(LIVE_LINK_PATH)
-            return json_response(self, 200, {"url": data.get("url", "")})
 
-        if path == "/api/calendar":
-            images = []
-            if CALENDAR_DIR.exists():
-                for f in sorted(CALENDAR_DIR.iterdir()):
-                    if f.is_file() and f.suffix.lower() in [".jpg", ".jpeg", ".png", ".gif", ".webp"]:
-                        images.append(f.name)
-            return json_response(self, 200, {"images": images})
+_RATE_GUARD = threading.Lock()
+_RATE_STATE = {}  # key -> list[timestamps]
 
-        # fallback static
-        return serve_static(self, path)
 
-    def do_POST(self):
-        parsed = urllib.parse.urlparse(self.path)
-        path = parsed.path
+def _client_ip() -> str:
+    xf = request.headers.get("X-Forwarded-For", "").strip()
+    if xf:
+        return xf.split(",")[0].strip()
+    return request.remote_addr or "unknown"
 
-        if path == "/api/login":
-            body = self._parse_json_body()
-            username = (body.get("username") or "").strip()
-            password = (body.get("password") or "").strip()
 
-            if username == "media" and password == "valiyapalli216":
-                token = secrets.token_hex(24)
-                SESSIONS[token] = {"created_at": time.time()}
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.send_header("Set-Cookie", f"{SESSION_COOKIE}={token}; HttpOnly; Path=/")
-                payload = json.dumps({"ok": True}).encode("utf-8")
-                self.send_header("Content-Length", str(len(payload)))
-                self.end_headers()
-                self.wfile.write(payload)
-                return
+def _rate_limit(key: str, limit: int, window_seconds: int) -> bool:
+    now = time.time()
+    cutoff = now - window_seconds
+    with _RATE_GUARD:
+        arr = _RATE_STATE.get(key, [])
+        arr = [t for t in arr if t >= cutoff]
+        if len(arr) >= limit:
+            _RATE_STATE[key] = arr
+            return False
+        arr.append(now)
+        _RATE_STATE[key] = arr
+        return True
 
-            return json_response(self, 401, {"error": "invalid_credentials"})
 
-        if path == "/api/logout":
-            token = get_cookie(self, SESSION_COOKIE)
-            if token and token in SESSIONS:
-                SESSIONS.pop(token, None)
-            # expire cookie
-            self.send_response(200)
-            self.send_header("Set-Cookie", f"{SESSION_COOKIE}=; HttpOnly; Path=/; Max-Age=0")
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            payload = json.dumps({"ok": True}).encode("utf-8")
-            self.send_header("Content-Length", str(len(payload)))
-            self.end_headers()
-            self.wfile.write(payload)
-            return
+@app.before_request
+def _before_request():
+    if request.path.startswith("/api/") and request.method in ["POST", "PUT"]:
+        # Basic in-memory rate limiting (per worker).
+        ip = _client_ip()
+        if request.path == "/api/login":
+            allowed = _rate_limit(f"rl:{ip}:{request.path}", 8, 600)
+        elif request.path == "/api/purchase":
+            allowed = _rate_limit(f"rl:{ip}:{request.path}", 30, 600)
+        elif request.path in ["/api/gallery/upload", "/api/calendar/upload", "/api/nercha-image/upload"]:
+            allowed = _rate_limit(f"rl:{ip}:{request.path}", 10, 600)
+        else:
+            allowed = _rate_limit(f"rl:{ip}:{request.path}", 120, 600)
+        if not allowed:
+            _logger.warning("Rate limited %s %s from %s", request.method, request.path, ip)
+            return json_response(429, {"error": "unauthorized"})
 
-        if path == "/api/nercha-image/upload":
-            if not is_logged_in(self):
-                return json_response(self, 401, {"error": "unauthorized"})
 
-            ctype = self.headers.get("Content-Type", "")
-            if "multipart/form-data" not in ctype:
-                return json_response(self, 400, {"error": "expected multipart/form-data"})
+@app.before_request
+def _request_logging_start():
+    if request.path.startswith("/api/"):
+        g.req_id = secrets.token_hex(8)
+        g.req_start = time.perf_counter()
 
-            body = self._read_body()
-            media_files = parse_multipart_files(ctype, body, "nercha_image")
-            if not media_files:
-                return json_response(self, 400, {"error": "no file uploaded"})
 
-            raw_filename, file_bytes = media_files[0]
+@app.after_request
+def _request_logging_end(resp):
+    if request.path.startswith("/api/"):
+        start = getattr(g, "req_start", None)
+        dur_ms = None
+        if start is not None:
+            dur_ms = int((time.perf_counter() - start) * 1000)
+        ip = _client_ip()
+        _logger.info(
+            "api_request req_id=%s ip=%s method=%s path=%s status=%s duration_ms=%s",
+            getattr(g, "req_id", "-"),
+            ip,
+            request.method,
+            request.path,
+            getattr(resp, "status_code", "-"),
+            dur_ms if dur_ms is not None else "-"
+        )
+    return resp
+
+
+@app.errorhandler(413)
+def _handle_413(_e):
+    if request.path.startswith("/api/"):
+        return json_response(413, {"error": "upload_too_large"})
+    return not_found()
+
+
+@app.errorhandler(Exception)
+def _handle_exception(_e):
+    if request.path.startswith("/api/"):
+        _logger.exception("Unhandled error on API route %s", request.path)
+        return json_response(500, {"error": "server_error"})
+    _logger.exception("Unhandled error")
+    return not_found()
+
+
+ensure_data_files()
+
+
+@app.route("/", methods=["GET"])
+def route_root():
+    return serve_static("/")
+
+
+@app.route("/admin", methods=["GET"])
+def route_admin():
+    return serve_static("/admin")
+
+
+@app.route("/nerchas", methods=["GET"])
+def route_nerchas():
+    return serve_static("/nerchas")
+
+
+@app.route("/history", methods=["GET"])
+def route_history():
+    return serve_static("/history")
+
+
+@app.route("/<path:url_path>", methods=["GET"])
+def route_catch_all(url_path: str):
+    # Let any /api routes be handled by explicit Flask routes.
+    return serve_static("/" + url_path)
+
+
+@app.route("/api/nerchas", methods=["GET"])
+def api_get_nerchas():
+    data = read_json_file(OFFERINGS_PATH)
+    offerings = []
+    for item in data.get("offerings", []):
+        if not isinstance(item, dict):
+            continue
+        row = dict(item)
+        row.setdefault("image", "")
+        offerings.append(row)
+    _logger.info("api_get_nerchas")
+    return json_response(200, {"offerings": offerings})
+
+
+@app.route("/api/nerchas", methods=["PUT"])
+def api_put_nerchas():
+    if not is_logged_in():
+        return json_response(401, {"error": "unauthorized"})
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        body = {}
+    offerings = body.get("offerings", [])
+    cleaned = []
+    if isinstance(offerings, list):
+        for item in offerings:
+            if not isinstance(item, dict):
+                continue
+            english = (item.get("english") or "").strip()
+            malayalam = (item.get("malayalam") or "").strip()
+            try:
+                price = int(item.get("price"))
+            except Exception:
+                price = 0
+            image = (item.get("image") or "").strip()
+            if image:
+                image = sanitize_filename(image)
+            cleaned.append({"english": english, "malayalam": malayalam, "price": price, "image": image})
+    with _lock_for_path(OFFERINGS_PATH):
+        write_json_file(OFFERINGS_PATH, {"offerings": cleaned})
+    _logger.info("admin updated nerchas")
+    return json_response(200, {"ok": True})
+
+
+@app.route("/api/purchases", methods=["GET"])
+def api_get_purchases():
+    if not is_logged_in():
+        return json_response(401, {"error": "unauthorized"})
+    data = read_json_file(PURCHASES_PATH)
+    return json_response(200, {"purchases": data.get("purchases", [])})
+
+
+@app.route("/api/gallery", methods=["GET"])
+def api_get_gallery():
+    data = read_json_file(GALLERY_META_PATH)
+    return json_response(200, {"items": data.get("items", [])})
+
+
+@app.route("/api/gallery/upload", methods=["POST"])
+def api_upload_gallery():
+    if not is_logged_in():
+        return json_response(401, {"error": "unauthorized"})
+
+    ctype = request.content_type or ""
+    if "multipart/form-data" not in ctype:
+        return json_response(400, {"error": "expected multipart/form-data"})
+
+    body = request.get_data(cache=False)
+    media_files = parse_multipart_files(ctype, body, "media")
+    if not media_files:
+        return json_response(400, {"error": "no files uploaded"})
+
+    uploaded = []
+    label = format_date_label()
+    image_suffixes = [".jpg", ".jpeg", ".png", ".gif", ".webp"]
+    video_suffixes = [".mp4", ".mov", ".mkv", ".webm"]
+    prepared = []
+    max_file_bytes = int(os.environ.get("MAX_FILE_BYTES", str(50 * 1024 * 1024)))
+    for raw_filename, file_bytes, part_ct in media_files:
+        if len(file_bytes) > max_file_bytes:
+            return json_response(400, {"error": "file_too_large"})
+        filename = sanitize_filename(raw_filename)
+        suffix = Path(filename).suffix.lower()
+        if suffix not in image_suffixes and suffix not in video_suffixes:
+            return json_response(400, {"error": "unsupported media type"})
+        # Best-effort MIME validation: accept extension; if Content-Type is present,
+        # require it to align with the expected category.
+        if part_ct:
+            lowered = part_ct.lower()
+            if suffix in video_suffixes and not lowered.startswith("video/"):
+                return json_response(400, {"error": "unsupported media type"})
+            if suffix not in video_suffixes and not lowered.startswith("image/"):
+                return json_response(400, {"error": "unsupported media type"})
+        prepared.append((filename, suffix, file_bytes))
+
+    with _lock_for_path(GALLERY_META_PATH):
+        gallery_data = read_json_file(GALLERY_META_PATH)
+        gallery_items = gallery_data.get("items", [])
+        for filename, suffix, file_bytes in prepared:
+            out_path = GALLERY_DIR / filename
+            if out_path.exists():
+                out_path = GALLERY_DIR / f"{Path(filename).stem}_{secrets.token_hex(4)}{suffix}"
+
+            out_path.write_bytes(file_bytes)
+            uploaded.append(out_path.name)
+            media_type = "video" if suffix in video_suffixes else "image"
+            gallery_items.append({"filename": out_path.name, "type": media_type, "date": label})
+
+        write_json_file(GALLERY_META_PATH, {"items": gallery_items})
+
+    _logger.info("admin gallery upload: %d file(s)", len(uploaded))
+    return json_response(200, {"ok": True, "message": f"Uploaded {len(uploaded)} file(s).", "files": uploaded})
+
+
+@app.route("/api/gallery/delete", methods=["POST"])
+def api_delete_gallery():
+    if not is_logged_in():
+        return json_response(401, {"error": "unauthorized"})
+
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        body = {}
+    filename = sanitize_filename(body.get("filename", ""))
+    if not filename:
+        return json_response(400, {"error": "filename required"})
+
+    with _lock_for_path(GALLERY_META_PATH):
+        gallery_data = read_json_file(GALLERY_META_PATH)
+        items = gallery_data.get("items", [])
+        items = [item for item in items if item.get("filename") != filename]
+        write_json_file(GALLERY_META_PATH, {"items": items})
+
+    target = GALLERY_DIR / filename
+    if target.exists() and target.is_file():
+        target.unlink()
+
+    _logger.info("admin gallery delete: %s", filename)
+    return json_response(200, {"ok": True})
+
+
+@app.route("/api/nercha-image/upload", methods=["POST"])
+def api_upload_nercha_image():
+    if not is_logged_in():
+        return json_response(401, {"error": "unauthorized"})
+
+    ctype = request.content_type or ""
+    if "multipart/form-data" not in ctype:
+        return json_response(400, {"error": "expected multipart/form-data"})
+
+    body = request.get_data(cache=False)
+    media_files = parse_multipart_files(ctype, body, "nercha_image")
+    if not media_files:
+        return json_response(400, {"error": "no file uploaded"})
+
+    raw_filename, file_bytes, part_ct = media_files[0]
+    max_file_bytes = int(os.environ.get("MAX_FILE_BYTES", str(50 * 1024 * 1024)))
+    if len(file_bytes) > max_file_bytes:
+        return json_response(400, {"error": "file_too_large"})
+    filename = sanitize_filename(raw_filename)
+    suffix = Path(filename).suffix.lower()
+    if suffix not in [".jpg", ".jpeg", ".png", ".gif", ".webp"]:
+        return json_response(400, {"error": "unsupported image type"})
+    if part_ct:
+        if not part_ct.lower().startswith("image/"):
+            return json_response(400, {"error": "unsupported image type"})
+    with _lock_for_path(COUPON_FS_LOCK_PATH):
+        out_path = COUPON_DIR / filename
+        if out_path.exists():
+            out_path = COUPON_DIR / f"{Path(filename).stem}_{secrets.token_hex(4)}{suffix}"
+
+        out_path.write_bytes(file_bytes)
+        _logger.info("admin nercha image upload: %s", out_path.name)
+        return json_response(200, {"ok": True, "filename": out_path.name})
+
+
+@app.route("/api/calendar", methods=["GET"])
+def api_get_calendar():
+    images = []
+    if CALENDAR_DIR.exists():
+        for f in sorted(CALENDAR_DIR.iterdir()):
+            if f.is_file() and f.suffix.lower() in [".jpg", ".jpeg", ".png", ".gif", ".webp"]:
+                images.append(f.name)
+    return json_response(200, {"images": images})
+
+
+@app.route("/api/calendar/upload", methods=["POST"])
+def api_upload_calendar():
+    if not is_logged_in():
+        return json_response(401, {"error": "unauthorized"})
+
+    ctype = request.content_type or ""
+    if "multipart/form-data" not in ctype:
+        return json_response(400, {"error": "expected multipart/form-data"})
+
+    body = request.get_data(cache=False)
+    media_files = parse_multipart_files(ctype, body, "calendar")
+    if not media_files:
+        return json_response(400, {"error": "no files uploaded"})
+
+    uploaded = []
+    max_file_bytes = int(os.environ.get("MAX_FILE_BYTES", str(50 * 1024 * 1024)))
+    with _lock_for_path(CALENDAR_FS_LOCK_PATH):
+        for raw_filename, file_bytes, part_ct in media_files:
+            if len(file_bytes) > max_file_bytes:
+                return json_response(400, {"error": "file_too_large"})
             filename = sanitize_filename(raw_filename)
             suffix = Path(filename).suffix.lower()
             if suffix not in [".jpg", ".jpeg", ".png", ".gif", ".webp"]:
-                return json_response(self, 400, {"error": "unsupported image type"})
-
-            out_path = COUPON_DIR / filename
+                continue
+            if part_ct and not part_ct.lower().startswith("image/"):
+                continue
+            out_path = CALENDAR_DIR / filename
             if out_path.exists():
-                out_path = COUPON_DIR / f"{Path(filename).stem}_{secrets.token_hex(4)}{suffix}"
-
+                out_path = CALENDAR_DIR / f"{Path(filename).stem}_{secrets.token_hex(4)}{suffix}"
             out_path.write_bytes(file_bytes)
-            return json_response(self, 200, {"ok": True, "filename": out_path.name})
+            uploaded.append(out_path.name)
 
-        if path == "/api/calendar/upload":
-            if not is_logged_in(self):
-                return json_response(self, 401, {"error": "unauthorized"})
-
-            ctype = self.headers.get("Content-Type", "")
-            if "multipart/form-data" not in ctype:
-                return json_response(self, 400, {"error": "expected multipart/form-data"})
-
-            body = self._read_body()
-            media_files = parse_multipart_files(ctype, body, "calendar")
-            if not media_files:
-                return json_response(self, 400, {"error": "no files uploaded"})
-
-            uploaded = []
-            for raw_filename, file_bytes in media_files:
-                filename = sanitize_filename(raw_filename)
-                suffix = Path(filename).suffix.lower()
-                if suffix not in [".jpg", ".jpeg", ".png", ".gif", ".webp"]:
-                    continue
-                out_path = CALENDAR_DIR / filename
-                if out_path.exists():
-                    out_path = CALENDAR_DIR / f"{Path(filename).stem}_{secrets.token_hex(4)}{suffix}"
-                out_path.write_bytes(file_bytes)
-                uploaded.append(out_path.name)
-
-            return json_response(self, 200, {"ok": True, "message": f"Uploaded {len(uploaded)} file(s).", "images": uploaded})
-
-        if path == "/api/calendar/delete":
-            if not is_logged_in(self):
-                return json_response(self, 401, {"error": "unauthorized"})
-
-            body = self._parse_json_body()
-            filename = sanitize_filename(body.get("filename", ""))
-            if not filename:
-                return json_response(self, 400, {"error": "filename required"})
-
-            target = CALENDAR_DIR / filename
-            if target.exists() and target.is_file():
-                target.unlink()
-
-            return json_response(self, 200, {"ok": True})
-
-        if path == "/api/gallery/upload":
-            if not is_logged_in(self):
-                return json_response(self, 401, {"error": "unauthorized"})
-
-            ctype = self.headers.get("Content-Type", "")
-            if "multipart/form-data" not in ctype:
-                return json_response(self, 400, {"error": "expected multipart/form-data"})
-
-            body = self._read_body()
-            media_files = parse_multipart_files(ctype, body, "media")
-            if not media_files:
-                return json_response(self, 400, {"error": "no files uploaded"})
-
-            uploaded = []
-            gallery_data = read_json_file(GALLERY_META_PATH)
-            gallery_items = gallery_data.get("items", [])
-            label = format_date_label()
-            for raw_filename, file_bytes in media_files:
-                filename = sanitize_filename(raw_filename)
-                suffix = Path(filename).suffix.lower()
-                out_path = GALLERY_DIR / filename
-                # avoid overwrite: add suffix if exists
-                if out_path.exists():
-                    out_path = GALLERY_DIR / f"{Path(filename).stem}_{secrets.token_hex(4)}{suffix}"
-
-                out_path.write_bytes(file_bytes)
-                uploaded.append(out_path.name)
-                media_type = "video" if suffix in [".mp4", ".mov", ".mkv", ".webm"] else "image"
-                gallery_items.append({"filename": out_path.name, "type": media_type, "date": label})
-
-            write_json_file(GALLERY_META_PATH, {"items": gallery_items})
-
-            return json_response(self, 200, {"ok": True, "message": f"Uploaded {len(uploaded)} file(s).", "files": uploaded})
-
-        if path == "/api/purchase":
-            body = self._parse_json_body()
-            purchases = read_json_file(PURCHASES_PATH).get("purchases", [])
-            ts = time.time()
-            purchases.append({
-                "name": (body.get("name") or "").strip(),
-                "address": (body.get("address") or "").strip(),
-                "phone": (body.get("phone") or "").strip(),
-                "malayalam": (body.get("malayalam") or "").strip(),
-                "english": (body.get("english") or "").strip(),
-                "price": int(body.get("price") or 0),
-                "date": format_date_label(ts),
-                "time": format_time_label(ts),
-                "timestamp": int(ts)
-            })
-            write_json_file(PURCHASES_PATH, {"purchases": purchases})
-            return json_response(self, 200, {"ok": True})
-
-        if path == "/api/gallery/delete":
-            if not is_logged_in(self):
-                return json_response(self, 401, {"error": "unauthorized"})
-
-            body = self._parse_json_body()
-            filename = sanitize_filename(body.get("filename", ""))
-            if not filename:
-                return json_response(self, 400, {"error": "filename required"})
-
-            gallery_data = read_json_file(GALLERY_META_PATH)
-            items = gallery_data.get("items", [])
-            items = [item for item in items if item.get("filename") != filename]
-            write_json_file(GALLERY_META_PATH, {"items": items})
-
-            target = GALLERY_DIR / filename
-            if target.exists() and target.is_file():
-                target.unlink()
-
-            return json_response(self, 200, {"ok": True})
-
-        return not_found(self)
-
-    def do_PUT(self):
-        parsed = urllib.parse.urlparse(self.path)
-        path = parsed.path
-
-        if path == "/api/nerchas":
-            if not is_logged_in(self):
-                return json_response(self, 401, {"error": "unauthorized"})
-
-            body = self._parse_json_body()
-            offerings = body.get("offerings", [])
-            # Validate minimal structure
-            cleaned = []
-            if isinstance(offerings, list):
-                for item in offerings:
-                    if not isinstance(item, dict):
-                        continue
-                    english = (item.get("english") or "").strip()
-                    malayalam = (item.get("malayalam") or "").strip()
-                    try:
-                        price = int(item.get("price"))
-                    except Exception:
-                        price = 0
-                    image = (item.get("image") or "").strip()
-                    if image:
-                        image = sanitize_filename(image)
-                    cleaned.append({"english": english, "malayalam": malayalam, "price": price, "image": image})
-
-            write_json_file(OFFERINGS_PATH, {"offerings": cleaned})
-            return json_response(self, 200, {"ok": True})
-
-        if path == "/api/live-link":
-            if not is_logged_in(self):
-                return json_response(self, 401, {"error": "unauthorized"})
-            body = self._parse_json_body()
-            url = (body.get("url") or "").strip()
-            write_json_file(LIVE_LINK_PATH, {"url": url})
-            return json_response(self, 200, {"ok": True})
-
-        return not_found(self)
-
-    def log_message(self, format, *args):
-        # Silence default request logging for cleaner local runs.
-        return
+    _logger.info("admin calendar upload: %d file(s)", len(uploaded))
+    return json_response(200, {"ok": True, "message": f"Uploaded {len(uploaded)} file(s).", "images": uploaded})
 
 
-class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
-    daemon_threads = True
+@app.route("/api/calendar/delete", methods=["POST"])
+def api_delete_calendar():
+    if not is_logged_in():
+        return json_response(401, {"error": "unauthorized"})
+
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        body = {}
+    filename = sanitize_filename(body.get("filename", ""))
+    if not filename:
+        return json_response(400, {"error": "filename required"})
+    with _lock_for_path(CALENDAR_FS_LOCK_PATH):
+        target = CALENDAR_DIR / filename
+        if target.exists() and target.is_file():
+            target.unlink()
+
+    _logger.info("admin calendar delete: %s", filename)
+    return json_response(200, {"ok": True})
 
 
-def run(port: int = 5500):
-    ensure_data_files()
-    server = ThreadingHTTPServer(("0.0.0.0", port), Handler)
-    print(f"Serving on http://localhost:{port}")
-    server.serve_forever()
+_PAYMENT_HMAC_SECRET = (
+    os.environ.get("PAYMENT_HMAC_SECRET")
+    or os.environ.get("PAYMENT_WEBHOOK_SECRET")
+    or ""
+).strip()
+
+
+def _verify_payment_signature(provider: str, transaction_id: str, signature: str) -> (bool, str):
+    """
+    Verify payment signature using HMAC-SHA256 over provider+transaction_id.
+    This does not require any payment gateway SDK; it is purely server-side verification.
+    """
+    if not _PAYMENT_HMAC_SECRET:
+        return False, "missing_payment_secret"
+    provider = (provider or "").strip().lower() or "generic"
+    msg = f"{provider}|{transaction_id}".encode("utf-8")
+    expected = hmac.new(_PAYMENT_HMAC_SECRET.encode("utf-8"), msg, hashlib.sha256).hexdigest()
+    if hmac.compare_digest(expected, signature):
+        return True, "verified"
+    return False, "signature_mismatch"
+
+
+@app.route("/api/purchase", methods=["POST"])
+def api_purchase():
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        body = {}
+
+    # Payment safety fields (only used when provided by the client).
+    transaction_id = str(body.get("transaction_id") or body.get("transactionId") or body.get("payment_id") or "").strip()
+    signature = str(body.get("signature") or body.get("signature_value") or body.get("signatureId") or "").strip()
+    provider = str(body.get("provider") or body.get("gateway") or "").strip()
+
+    purchases = []
+    with _lock_for_path(PURCHASES_PATH):
+        purchases = read_json_file(PURCHASES_PATH).get("purchases", [])
+
+        # Prevent duplicate transactions if an ID is provided.
+        if transaction_id:
+            for p in purchases:
+                if str(p.get("transaction_id", "")).strip() == transaction_id:
+                    _logger.warning("purchase duplicate transaction_id blocked: %s", transaction_id)
+                    return json_response(200, {"ok": True})
+
+        ts = time.time()
+
+        payment_status = "pending"
+        payment_error = ""
+        if transaction_id and signature:
+            ok, reason = _verify_payment_signature(provider, transaction_id, signature)
+            payment_status = "success" if ok else "failed"
+            payment_error = "" if ok else reason
+
+        record = {
+            "name": str(body.get("name") or "").strip(),
+            "address": str(body.get("address") or "").strip(),
+            "phone": str(body.get("phone") or "").strip(),
+            "malayalam": str(body.get("malayalam") or "").strip(),
+            "english": str(body.get("english") or "").strip(),
+            "price": int(body.get("price") or 0),
+            "date": format_date_label(ts),
+            "time": format_time_label(ts),
+            "timestamp": int(ts),
+            "payment_status": payment_status
+        }
+
+        if transaction_id:
+            record["transaction_id"] = transaction_id
+            if provider:
+                record["provider"] = provider
+        if payment_error:
+            record["payment_error"] = payment_error
+
+        purchases.append(record)
+        write_json_file(PURCHASES_PATH, {"purchases": purchases})
+
+    _logger.info(
+        "purchase recorded: status=%s tx=%s",
+        payment_status,
+        transaction_id if transaction_id else "-"
+    )
+    return json_response(200, {"ok": True})
+
+
+@app.route("/api/live-link", methods=["GET"])
+def api_live_link_get():
+    data = read_json_file(LIVE_LINK_PATH)
+    return json_response(200, {"url": data.get("url", "")})
+
+
+@app.route("/api/live-link", methods=["PUT"])
+def api_live_link_put():
+    if not is_logged_in():
+        return json_response(401, {"error": "unauthorized"})
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        body = {}
+    url = (body.get("url") or "").strip()
+    with _lock_for_path(LIVE_LINK_PATH):
+        write_json_file(LIVE_LINK_PATH, {"url": url})
+    _logger.info("admin live url updated")
+    return json_response(200, {"ok": True})
+
+
+@app.route("/api/login", methods=["POST"])
+def api_login():
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        body = {}
+    username = (body.get("username") or "").strip()
+    password = (body.get("password") or "").strip()
+
+    if username == "media" and password == "valiyapalli216":
+        token_value = _make_session_cookie_value()
+        resp = json_response(200, {"ok": True})
+        resp.set_cookie(
+            SESSION_COOKIE,
+            token_value,
+            httponly=True,
+            path="/",
+            max_age=SESSION_TTL_SECONDS,
+            samesite="Lax",
+        )
+        _logger.info("admin login ok")
+        return resp
+
+    _logger.warning("admin login failed")
+    return json_response(401, {"error": "invalid_credentials"})
+
+
+@app.route("/api/logout", methods=["POST"])
+def api_logout():
+    resp = json_response(200, {"ok": True})
+    resp.set_cookie(
+        SESSION_COOKIE,
+        "",
+        httponly=True,
+        path="/",
+        max_age=0,
+        samesite="Lax",
+    )
+    _logger.info("admin logout")
+    return resp
 
 
 if __name__ == "__main__":
-    run()
+    port = int(os.environ.get("PORT", "5500"))
+    print(f"Serving on http://localhost:{port}")
+    # Threaded mode for local runs; production should use gunicorn.
+    app.run(host="0.0.0.0", port=port, threaded=True)
 
