@@ -155,6 +155,8 @@
                 heading.textContent = date;
                 grid.appendChild(heading);
 
+                grouped[date].sort((a, b) => (Number(b.uploaded_at) || 0) - (Number(a.uploaded_at) || 0));
+
                 grouped[date].forEach(item => {
                     const wrapper = document.createElement('div');
                     wrapper.className = 'gallery-item';

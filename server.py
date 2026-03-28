@@ -2,6 +2,7 @@ import os
 import json
 import mimetypes
 import secrets
+import shutil
 import time
 import urllib.parse
 import logging
@@ -29,6 +30,21 @@ COUPON_FS_LOCK_PATH = DATA_DIR / "_coupon_fs_lock"
 
 SESSION_COOKIE = "admin_session"
 SESSION_TTL_SECONDS = 60 * 60 * 6  # 6 hours
+
+
+# Defaults tuned for large media uploads (override via env on hosting).
+_DEFAULT_MAX_UPLOAD = 500 * 1024 * 1024
+_DEFAULT_MAX_FILE = 450 * 1024 * 1024
+
+# Site images that belong in the public gallery (moved from assets/ root into assets/gallery/).
+_GALLERY_RELOCATE_FROM_ASSETS_ROOT = [
+    "church_exterior.jpg.jpg",
+    "church_night.jpg.jpg",
+    "649334100_1337804095050528_5143294464664934259_n.jpg",
+    "priest_sermon.jpg.jpg",
+    "palm_sunday.jpg.jpg",
+    "virgin_mary_icon.jpg.jpg",
+]
 
 
 DEFAULT_OFFERINGS = [
@@ -68,7 +84,13 @@ def ensure_data_files():
         GALLERY_META_PATH.write_text(json.dumps(default_gallery, ensure_ascii=False, indent=2), encoding="utf-8")
 
     if not LIVE_LINK_PATH.exists():
-        LIVE_LINK_PATH.write_text(json.dumps({"url": ""}, ensure_ascii=False, indent=2), encoding="utf-8")
+        LIVE_LINK_PATH.write_text(json.dumps({"url": "", "kind": ""}, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    migrate_live_link_schema()
+
+    migrate_loose_gallery_images_from_assets_root()
+    migrate_nercha_images_from_coupon_to_gallery()
+    sync_gallery_metadata_with_disk()
 
 
 def read_json_file(path: Path):
@@ -166,8 +188,179 @@ def format_time_label(ts=None):
     return time.strftime("%I:%M %p", time.localtime(ts))
 
 
+def _parse_date_label_to_ts(label) -> float:
+    if not label or not isinstance(label, str):
+        return 0.0
+    try:
+        return time.mktime(time.strptime(label.strip(), "%B %d, %Y"))
+    except Exception:
+        return 0.0
+
+
+def _gallery_image_video_suffixes():
+    image_suffixes = [".jpg", ".jpeg", ".png", ".gif", ".webp"]
+    video_suffixes = [".mp4", ".mov", ".mkv", ".webm"]
+    return image_suffixes, video_suffixes
+
+
+def migrate_loose_gallery_images_from_assets_root():
+    """Move gallery-oriented images from /assets/ into /assets/gallery/."""
+    assets = ROOT_DIR / "assets"
+    if not assets.is_dir():
+        return
+    GALLERY_DIR.mkdir(parents=True, exist_ok=True)
+    for name in _GALLERY_RELOCATE_FROM_ASSETS_ROOT:
+        src = assets / name
+        if not src.is_file():
+            continue
+        dest = GALLERY_DIR / name
+        if dest.exists():
+            continue
+        try:
+            shutil.move(str(src), str(dest))
+        except Exception:
+            pass
+
+
+def migrate_nercha_images_from_coupon_to_gallery():
+    """Move offering images stored under assets/coupon into assets/gallery/ and fix JSON paths."""
+    data = read_json_file(OFFERINGS_PATH)
+    offerings = data.get("offerings", [])
+    if not isinstance(offerings, list):
+        return
+    changed = False
+    new_list = []
+    GALLERY_DIR.mkdir(parents=True, exist_ok=True)
+    for item in offerings:
+        if not isinstance(item, dict):
+            continue
+        row = dict(item)
+        img = (row.get("image") or "").strip()
+        if img:
+            safe = sanitize_filename(img)
+            cpath = COUPON_DIR / safe
+            gpath = GALLERY_DIR / safe
+            if cpath.is_file():
+                final_name = safe
+                target = gpath
+                if target.exists():
+                    stem = Path(safe).stem
+                    suf = Path(safe).suffix.lower() or ".jpg"
+                    final_name = f"{stem}_{secrets.token_hex(4)}{suf}"
+                    target = GALLERY_DIR / final_name
+                try:
+                    shutil.move(str(cpath), str(target))
+                    row["image"] = final_name
+                    changed = True
+                except Exception:
+                    pass
+        new_list.append(row)
+    if changed:
+        with _lock_for_path(OFFERINGS_PATH):
+            write_json_file(OFFERINGS_PATH, {"offerings": new_list})
+
+
+def infer_live_kind_from_url(url: str) -> str:
+    u = (url or "").strip().lower()
+    if not u:
+        return ""
+    if "youtu.be" in u or "youtube.com" in u:
+        return "youtube"
+    if "facebook.com" in u or "fb.com" in u or "fb.watch" in u:
+        return "facebook"
+    return "facebook"
+
+
+def migrate_live_link_schema():
+    if not LIVE_LINK_PATH.exists():
+        return
+    data = read_json_file(LIVE_LINK_PATH)
+    if not isinstance(data, dict):
+        data = {}
+    if "kind" in data and isinstance(data.get("kind"), str):
+        return
+    url = (data.get("url") or "").strip()
+    kind = infer_live_kind_from_url(url) if url else ""
+    with _lock_for_path(LIVE_LINK_PATH):
+        write_json_file(LIVE_LINK_PATH, {"url": url, "kind": kind})
+
+
+def sync_gallery_metadata_with_disk():
+    """Ensure every file in assets/gallery/ appears in data/gallery.json (persistent, deployment-safe)."""
+    image_suffixes, video_suffixes = _gallery_image_video_suffixes()
+    allowed = set(image_suffixes + video_suffixes)
+    GALLERY_DIR.mkdir(parents=True, exist_ok=True)
+
+    with _lock_for_path(GALLERY_META_PATH):
+        data = read_json_file(GALLERY_META_PATH)
+        items = data.get("items", [])
+        if not isinstance(items, list):
+            items = []
+        by_name = {}
+        for item in items:
+            if isinstance(item, dict) and item.get("filename"):
+                by_name[item["filename"]] = dict(item)
+
+        changed = False
+        for f in GALLERY_DIR.iterdir():
+            if not f.is_file():
+                continue
+            suf = f.suffix.lower()
+            if suf not in allowed:
+                continue
+            name = f.name
+            if name in by_name:
+                continue
+            st = f.stat()
+            media_type = "video" if suf in video_suffixes else "image"
+            by_name[name] = {
+                "filename": name,
+                "type": media_type,
+                "date": format_date_label(st.st_mtime),
+                "uploaded_at": st.st_mtime,
+            }
+            changed = True
+
+        if not changed:
+            return
+
+        merged = list(by_name.values())
+
+        def sort_key(it):
+            ts = it.get("uploaded_at")
+            if ts is None:
+                ts = _parse_date_label_to_ts(it.get("date"))
+            try:
+                ts = float(ts)
+            except (TypeError, ValueError):
+                ts = 0.0
+            return (ts, it.get("filename") or "")
+
+        merged.sort(key=sort_key, reverse=True)
+        write_json_file(GALLERY_META_PATH, {"items": merged})
+
+
+def sort_gallery_items_for_api(items):
+    if not isinstance(items, list):
+        return []
+
+    def sort_key(it):
+        if not isinstance(it, dict):
+            return (0.0, "")
+        ts = it.get("uploaded_at")
+        if ts is None:
+            ts = _parse_date_label_to_ts(it.get("date"))
+        try:
+            ts = float(ts)
+        except (TypeError, ValueError):
+            ts = 0.0
+        return (ts, it.get("filename") or "")
+
+    return sorted(items, key=sort_key, reverse=True)
+
+
 app = Flask(__name__)
-app.config["MAX_CONTENT_LENGTH"] = int(os.environ.get("MAX_UPLOAD_BYTES", str(100 * 1024 * 1024)))
+app.config["MAX_CONTENT_LENGTH"] = int(os.environ.get("MAX_UPLOAD_BYTES", str(_DEFAULT_MAX_UPLOAD)))
 
 _logger = logging.getLogger("piravomvalliyapalli")
 if not _logger.handlers:
@@ -530,8 +723,12 @@ def api_get_purchases():
 
 @app.route("/api/gallery", methods=["GET"])
 def api_get_gallery():
+    sync_gallery_metadata_with_disk()
     data = read_json_file(GALLERY_META_PATH)
-    return json_response(200, {"items": data.get("items", [])})
+    items = data.get("items", [])
+    if not isinstance(items, list):
+        items = []
+    return json_response(200, {"items": sort_gallery_items_for_api(items)})
 
 
 @app.route("/api/gallery/upload", methods=["POST"])
@@ -549,11 +746,11 @@ def api_upload_gallery():
         return json_response(400, {"error": "no files uploaded"})
 
     uploaded = []
-    label = format_date_label()
-    image_suffixes = [".jpg", ".jpeg", ".png", ".gif", ".webp"]
-    video_suffixes = [".mp4", ".mov", ".mkv", ".webm"]
+    now_ts = time.time()
+    label = format_date_label(now_ts)
+    image_suffixes, video_suffixes = _gallery_image_video_suffixes()
     prepared = []
-    max_file_bytes = int(os.environ.get("MAX_FILE_BYTES", str(50 * 1024 * 1024)))
+    max_file_bytes = int(os.environ.get("MAX_FILE_BYTES", str(_DEFAULT_MAX_FILE)))
     for raw_filename, file_bytes, part_ct in media_files:
         if len(file_bytes) > max_file_bytes:
             return json_response(400, {"error": "file_too_large"})
@@ -561,19 +758,21 @@ def api_upload_gallery():
         suffix = Path(filename).suffix.lower()
         if suffix not in image_suffixes and suffix not in video_suffixes:
             return json_response(400, {"error": "unsupported media type"})
-        # Best-effort MIME validation: accept extension; if Content-Type is present,
-        # require it to align with the expected category.
         if part_ct:
-            lowered = part_ct.lower()
-            if suffix in video_suffixes and not lowered.startswith("video/"):
-                return json_response(400, {"error": "unsupported media type"})
-            if suffix not in video_suffixes and not lowered.startswith("image/"):
-                return json_response(400, {"error": "unsupported media type"})
+            lowered = part_ct.lower().split(";")[0].strip()
+            if suffix in video_suffixes:
+                if not (lowered.startswith("video/") or lowered == "application/octet-stream"):
+                    return json_response(400, {"error": "unsupported media type"})
+            else:
+                if not (lowered.startswith("image/") or lowered == "application/octet-stream"):
+                    return json_response(400, {"error": "unsupported media type"})
         prepared.append((filename, suffix, file_bytes))
 
     with _lock_for_path(GALLERY_META_PATH):
         gallery_data = read_json_file(GALLERY_META_PATH)
         gallery_items = gallery_data.get("items", [])
+        if not isinstance(gallery_items, list):
+            gallery_items = []
         for filename, suffix, file_bytes in prepared:
             out_path = GALLERY_DIR / filename
             if out_path.exists():
@@ -582,8 +781,16 @@ def api_upload_gallery():
             out_path.write_bytes(file_bytes)
             uploaded.append(out_path.name)
             media_type = "video" if suffix in video_suffixes else "image"
-            gallery_items.append({"filename": out_path.name, "type": media_type, "date": label})
+            gallery_items.append(
+                {
+                    "filename": out_path.name,
+                    "type": media_type,
+                    "date": label,
+                    "uploaded_at": now_ts,
+                }
+            )
 
+        gallery_items = sort_gallery_items_for_api(gallery_items)
         write_json_file(GALLERY_META_PATH, {"items": gallery_items})
 
     _logger.info("admin gallery upload: %d file(s)", len(uploaded))
@@ -631,7 +838,7 @@ def api_upload_nercha_image():
         return json_response(400, {"error": "no file uploaded"})
 
     raw_filename, file_bytes, part_ct = media_files[0]
-    max_file_bytes = int(os.environ.get("MAX_FILE_BYTES", str(50 * 1024 * 1024)))
+    max_file_bytes = int(os.environ.get("MAX_FILE_BYTES", str(_DEFAULT_MAX_FILE)))
     if len(file_bytes) > max_file_bytes:
         return json_response(400, {"error": "file_too_large"})
     filename = sanitize_filename(raw_filename)
@@ -639,15 +846,33 @@ def api_upload_nercha_image():
     if suffix not in [".jpg", ".jpeg", ".png", ".gif", ".webp"]:
         return json_response(400, {"error": "unsupported image type"})
     if part_ct:
-        if not part_ct.lower().startswith("image/"):
+        lowered = part_ct.lower().split(";")[0].strip()
+        if not (lowered.startswith("image/") or lowered == "application/octet-stream"):
             return json_response(400, {"error": "unsupported image type"})
-    with _lock_for_path(COUPON_FS_LOCK_PATH):
-        out_path = COUPON_DIR / filename
+    GALLERY_DIR.mkdir(parents=True, exist_ok=True)
+    with _lock_for_path(GALLERY_META_PATH):
+        out_path = GALLERY_DIR / filename
         if out_path.exists():
-            out_path = COUPON_DIR / f"{Path(filename).stem}_{secrets.token_hex(4)}{suffix}"
+            out_path = GALLERY_DIR / f"{Path(filename).stem}_{secrets.token_hex(4)}{suffix}"
 
         out_path.write_bytes(file_bytes)
-        _logger.info("admin nercha image upload: %s", out_path.name)
+        now_ts = time.time()
+        label = format_date_label(now_ts)
+        gallery_data = read_json_file(GALLERY_META_PATH)
+        gallery_items = gallery_data.get("items", [])
+        if not isinstance(gallery_items, list):
+            gallery_items = []
+        gallery_items.append(
+            {
+                "filename": out_path.name,
+                "type": "image",
+                "date": label,
+                "uploaded_at": now_ts,
+            }
+        )
+        gallery_items = sort_gallery_items_for_api(gallery_items)
+        write_json_file(GALLERY_META_PATH, {"items": gallery_items})
+        _logger.info("admin nercha image upload (gallery): %s", out_path.name)
         return json_response(200, {"ok": True, "filename": out_path.name})
 
 
@@ -676,7 +901,7 @@ def api_upload_calendar():
         return json_response(400, {"error": "no files uploaded"})
 
     uploaded = []
-    max_file_bytes = int(os.environ.get("MAX_FILE_BYTES", str(50 * 1024 * 1024)))
+    max_file_bytes = int(os.environ.get("MAX_FILE_BYTES", str(_DEFAULT_MAX_FILE)))
     with _lock_for_path(CALENDAR_FS_LOCK_PATH):
         for raw_filename, file_bytes, part_ct in media_files:
             if len(file_bytes) > max_file_bytes:
@@ -685,8 +910,10 @@ def api_upload_calendar():
             suffix = Path(filename).suffix.lower()
             if suffix not in [".jpg", ".jpeg", ".png", ".gif", ".webp"]:
                 continue
-            if part_ct and not part_ct.lower().startswith("image/"):
-                continue
+            if part_ct:
+                lowered = part_ct.lower().split(";")[0].strip()
+                if not (lowered.startswith("image/") or lowered == "application/octet-stream"):
+                    continue
             out_path = CALENDAR_DIR / filename
             if out_path.exists():
                 out_path = CALENDAR_DIR / f"{Path(filename).stem}_{secrets.token_hex(4)}{suffix}"
@@ -804,7 +1031,15 @@ def api_purchase():
 @app.route("/api/live-link", methods=["GET"])
 def api_live_link_get():
     data = read_json_file(LIVE_LINK_PATH)
-    return json_response(200, {"url": data.get("url", "")})
+    if not isinstance(data, dict):
+        data = {}
+    url = (data.get("url") or "").strip()
+    kind = (data.get("kind") or "").strip().lower()
+    if kind not in ("facebook", "youtube", ""):
+        kind = ""
+    if url and not kind:
+        kind = infer_live_kind_from_url(url)
+    return json_response(200, {"url": url, "kind": kind})
 
 
 @app.route("/api/live-link", methods=["PUT"])
@@ -815,9 +1050,15 @@ def api_live_link_put():
     if not isinstance(body, dict):
         body = {}
     url = (body.get("url") or "").strip()
+    kind = (body.get("kind") or "").strip().lower()
+    if url:
+        if kind not in ("facebook", "youtube"):
+            return json_response(400, {"error": "invalid_kind"})
+    else:
+        kind = ""
     with _lock_for_path(LIVE_LINK_PATH):
-        write_json_file(LIVE_LINK_PATH, {"url": url})
-    _logger.info("admin live url updated")
+        write_json_file(LIVE_LINK_PATH, {"url": url, "kind": kind})
+    _logger.info("admin live url updated kind=%s", kind or "-")
     return json_response(200, {"ok": True})
 
 

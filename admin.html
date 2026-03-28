@@ -97,14 +97,26 @@
                     </div>
 
                     <div class="contact-form">
-                        <h3 style="font-size: 1.5rem; margin-bottom: 1rem; color: var(--deep-maroon);">Live Stream URL</h3>
+                        <h3 style="font-size: 1.5rem; margin-bottom: 1rem; color: var(--deep-maroon);">Live Stream (one link active)</h3>
+                        <p style="color: var(--medium-gray); margin-bottom: 0.75rem; font-size: 0.92rem;">Saving Facebook or YouTube replaces any previous live link.</p>
                         <div class="form-group">
-                            <input type="url" id="live-url-input" placeholder="https://www.facebook.com/...">
+                            <label for="live-facebook-url" style="display:block;font-weight:700;color:var(--deep-maroon);margin-bottom:0.35rem;">Facebook Live URL</label>
+                            <input type="url" id="live-facebook-url" placeholder="https://www.facebook.com/...">
                         </div>
-                        <div class="form-actions" style="margin-top: 0.75rem; margin-bottom: 1.5rem;">
-                            <button type="button" id="save-live-url-btn" class="btn btn-primary">
+                        <div class="form-actions" style="margin-top: 0.5rem; margin-bottom: 1rem;">
+                            <button type="button" id="save-live-facebook-btn" class="btn btn-primary">
                                 <i class="fas fa-save"></i>
-                                Update Live URL
+                                Update Facebook Live
+                            </button>
+                        </div>
+                        <div class="form-group">
+                            <label for="live-youtube-url" style="display:block;font-weight:700;color:var(--deep-maroon);margin-bottom:0.35rem;">YouTube Live URL</label>
+                            <input type="url" id="live-youtube-url" placeholder="https://www.youtube.com/watch?v=...">
+                        </div>
+                        <div class="form-actions" style="margin-top: 0.5rem; margin-bottom: 1.25rem;">
+                            <button type="button" id="save-live-youtube-btn" class="btn btn-primary">
+                                <i class="fas fa-save"></i>
+                                Update YouTube Live
                             </button>
                         </div>
                         <div id="live-url-status" style="margin-bottom: 1.25rem; font-weight: 600;"></div>
@@ -179,9 +191,13 @@
 
         const purchasesList = document.getElementById('purchases-list');
         const galleryAdminGrid = document.getElementById('gallery-admin-grid');
-        const liveUrlInput = document.getElementById('live-url-input');
-        const saveLiveUrlBtn = document.getElementById('save-live-url-btn');
+        const liveFacebookUrlInput = document.getElementById('live-facebook-url');
+        const liveYoutubeUrlInput = document.getElementById('live-youtube-url');
+        const saveLiveFacebookBtn = document.getElementById('save-live-facebook-btn');
+        const saveLiveYoutubeBtn = document.getElementById('save-live-youtube-btn');
         const liveUrlStatus = document.getElementById('live-url-status');
+
+        let offeringsSaveTimer = null;
 
         function showAdminUI() {
             loginPanel.style.display = 'none';
@@ -203,7 +219,7 @@
                 row.style.background = 'rgba(250, 248, 245, 0.6)';
 
                 const imgName = (item.image || '').trim();
-                const previewSrc = imgName ? `assets/coupon/${imgName}` : '';
+                const previewSrc = imgName ? `assets/gallery/${imgName}` : '';
                 const safeImgAttr = imgName.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 
                 row.innerHTML = `
@@ -257,13 +273,13 @@
                         });
                     }
                     renderOfferings(rows);
-                    autoSaveOfferings();
+                    scheduleAutoSaveOfferings();
                 });
             });
 
             offeringsEditor.querySelectorAll('.admin-ml, .admin-en, .admin-price').forEach(input => {
                 input.addEventListener('input', () => {
-                    autoSaveOfferings();
+                    scheduleAutoSaveOfferings();
                 });
             });
 
@@ -288,9 +304,9 @@
                         const hiddens = offeringsEditor.querySelectorAll('.admin-image');
                         const previews = offeringsEditor.querySelectorAll('.admin-nercha-preview');
                         hiddens[idx].value = fn;
-                        previews[idx].src = `assets/coupon/${fn}`;
+                        previews[idx].src = `assets/gallery/${fn}`;
                         previews[idx].style.display = 'block';
-                        await autoSaveOfferings();
+                        await flushAutoSaveOfferings();
                     } catch (e) {
                         offeringsSaveStatus.textContent = 'Image upload failed';
                     }
@@ -333,7 +349,11 @@
             const purchasesData = await apiGet('/api/purchases');
             purchasesList.innerHTML = '';
             const purchases = Array.isArray(purchasesData.purchases) ? purchasesData.purchases : [];
-            purchases.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+            purchases.sort((a, b) => {
+                const tb = Number(b.timestamp) || Date.parse(b.date || '') || 0;
+                const ta = Number(a.timestamp) || Date.parse(a.date || '') || 0;
+                return tb - ta;
+            });
 
             if (purchases.length === 0) {
                 const li = document.createElement('li');
@@ -383,7 +403,10 @@
 
             try {
                 const live = await apiGet('/api/live-link');
-                liveUrlInput.value = live.url || '';
+                const lu = (live.url || '').trim();
+                const lk = (live.kind || '').toLowerCase();
+                if (liveFacebookUrlInput) liveFacebookUrlInput.value = lk === 'facebook' ? lu : '';
+                if (liveYoutubeUrlInput) liveYoutubeUrlInput.value = lk === 'youtube' ? lu : '';
             } catch (e) {}
 
             try {
@@ -421,7 +444,11 @@
             } catch (e) {}
         }
 
-        async function autoSaveOfferings() {
+        async function flushAutoSaveOfferings() {
+            if (offeringsSaveTimer) {
+                clearTimeout(offeringsSaveTimer);
+                offeringsSaveTimer = null;
+            }
             const mlInputs = offeringsEditor.querySelectorAll('.admin-ml');
             const enInputs = offeringsEditor.querySelectorAll('.admin-en');
             const priceInputs = offeringsEditor.querySelectorAll('.admin-price');
@@ -441,9 +468,17 @@
             }
         }
 
+        function scheduleAutoSaveOfferings() {
+            if (offeringsSaveTimer) clearTimeout(offeringsSaveTimer);
+            offeringsSaveTimer = setTimeout(() => {
+                offeringsSaveTimer = null;
+                flushAutoSaveOfferings();
+            }, 450);
+        }
+
         document.addEventListener('DOMContentLoaded', async () => {
             try {
-                await apiGet('/api/nerchas');
+                await apiGet('/api/purchases');
                 showAdminUI();
                 await loadAdminData();
             } catch (e) {
@@ -512,8 +547,15 @@
                         credentials: 'include',
                         body: formData
                     });
-                    if (!res.ok) throw new Error('Upload failed');
                     const data = await res.json().catch(() => ({}));
+                    if (res.status === 413) {
+                        uploadStatus.textContent = 'File too large for server limits. Try a smaller file or ask hosting to raise MAX_UPLOAD_BYTES.';
+                        return;
+                    }
+                    if (!res.ok) {
+                        uploadStatus.textContent = data.error === 'file_too_large' ? 'One or more files exceed the per-file size limit.' : 'Upload failed.';
+                        return;
+                    }
                     uploadStatus.textContent = data.message || 'Upload successful.';
                     await loadAdminData();
                 } catch (err) {
@@ -536,7 +578,7 @@
                 }
                 rows.push({ malayalam: '', english: '', price: 0, image: '' });
                 renderOfferings(rows);
-                autoSaveOfferings();
+                scheduleAutoSaveOfferings();
             });
         }
 
@@ -572,16 +614,35 @@
             });
         }
 
-        if (saveLiveUrlBtn) {
-            saveLiveUrlBtn.addEventListener('click', async () => {
+        if (saveLiveFacebookBtn && liveFacebookUrlInput) {
+            saveLiveFacebookBtn.addEventListener('click', async () => {
                 try {
-                    await apiPut('/api/live-link', { url: liveUrlInput.value.trim() });
-                    liveUrlStatus.textContent = 'Live URL updated';
+                    const url = liveFacebookUrlInput.value.trim();
+                    await apiPut('/api/live-link', { url, kind: 'facebook' });
+                    if (liveYoutubeUrlInput) liveYoutubeUrlInput.value = '';
+                    liveUrlStatus.textContent = 'Facebook live link saved (YouTube cleared).';
                 } catch (e) {
                     liveUrlStatus.textContent = 'Update failed';
                 }
             });
         }
+
+        if (saveLiveYoutubeBtn && liveYoutubeUrlInput) {
+            saveLiveYoutubeBtn.addEventListener('click', async () => {
+                try {
+                    const url = liveYoutubeUrlInput.value.trim();
+                    await apiPut('/api/live-link', { url, kind: 'youtube' });
+                    if (liveFacebookUrlInput) liveFacebookUrlInput.value = '';
+                    liveUrlStatus.textContent = 'YouTube live link saved (Facebook cleared).';
+                } catch (e) {
+                    liveUrlStatus.textContent = 'Update failed';
+                }
+            });
+        }
+
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'hidden') flushAutoSaveOfferings();
+        });
     </script>
 </body>
 </html>

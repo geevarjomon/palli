@@ -25,12 +25,20 @@ window.addEventListener('scroll', () => {
     }
 });
 
-// Smooth scrolling for navigation links
-document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+// Smooth scrolling for in-page anchors and index.html#visit when already on the home page
+document.querySelectorAll('a[href^="#"], a[href="index.html#visit"]').forEach((anchor) => {
     anchor.addEventListener('click', function (e) {
-        e.preventDefault();
-        const target = document.querySelector(this.getAttribute('href'));
+        const rawHref = this.getAttribute('href');
+        let selector = null;
+        if (rawHref && rawHref.startsWith('#')) {
+            selector = rawHref;
+        } else if (rawHref === 'index.html#visit') {
+            selector = '#visit';
+        }
+        if (!selector) return;
+        const target = document.querySelector(selector);
         if (target) {
+            e.preventDefault();
             target.scrollIntoView({
                 behavior: 'smooth',
                 block: 'start'
@@ -74,11 +82,16 @@ lightbox.innerHTML = `
     <div class="lightbox-content">
         <span class="lightbox-close">&times;</span>
         <img src="" alt="" class="lightbox-image">
-        <video class="lightbox-video" controls style="display:none;"></video>
+        <video class="lightbox-video" controls playsinline style="display:none;"></video>
         <a href="#" class="lightbox-download btn btn-primary" download style="margin-top: 1rem; display: inline-block;">Download</a>
     </div>
 `;
 document.body.appendChild(lightbox);
+
+const lightboxContentEl = lightbox.querySelector('.lightbox-content');
+if (lightboxContentEl) {
+    lightboxContentEl.addEventListener('click', (e) => e.stopPropagation());
+}
 
 function openGalleryLightboxFromItem(item) {
     const lightboxImage = lightbox.querySelector('.lightbox-image');
@@ -93,7 +106,8 @@ function openGalleryLightboxFromItem(item) {
         lightboxVideo.src = video.currentSrc || video.src;
         lightboxVideo.load();
         downloadBtn.href = lightboxVideo.src;
-        downloadBtn.setAttribute('download', '');
+        const vf = (lightboxVideo.src || '').split('/').pop().split('?')[0] || 'video-download';
+        downloadBtn.setAttribute('download', vf);
     } else if (img) {
         lightboxVideo.pause();
         lightboxVideo.style.display = 'none';
@@ -102,7 +116,8 @@ function openGalleryLightboxFromItem(item) {
         lightboxImage.src = img.src;
         lightboxImage.alt = img.alt;
         downloadBtn.href = img.src;
-        downloadBtn.setAttribute('download', '');
+        const nf = (img.src || '').split('/').pop().split('?')[0] || 'image-download';
+        downloadBtn.setAttribute('download', nf);
     }
     lightbox.classList.add('active');
     document.body.style.overflow = 'hidden';
@@ -131,19 +146,28 @@ lightboxStyles.textContent = `
     
     .lightbox-content {
         position: relative;
-        max-width: 90%;
-        max-height: 90%;
+        max-width: min(96vw, 1200px);
+        max-height: 92vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        cursor: default;
     }
     
     .lightbox-image {
-        width: 100%;
+        width: auto;
+        max-width: 100%;
+        max-height: 85vh;
         height: auto;
+        object-fit: contain;
         border-radius: 10px;
     }
 
     .lightbox-video {
-        width: 100%;
-        max-height: 80vh;
+        width: auto;
+        max-width: 100%;
+        max-height: 85vh;
         border-radius: 10px;
     }
     
@@ -557,7 +581,7 @@ function getCouponImageByIndex(index) {
 
 function getNerchaImageSrc(item, index) {
     const fn = item && item.image ? String(item.image).trim() : '';
-    if (fn) return `assets/coupon/${fn}`;
+    if (fn) return `assets/gallery/${fn}`;
     return getCouponImageByIndex(index);
 }
 
@@ -747,14 +771,21 @@ document.addEventListener('DOMContentLoaded', () => {
     populateEvents();
 });
 
+let _nerchasOfferingsCache = null;
+
 async function getNerchas() {
     try {
         const res = await fetch('/api/nerchas');
         if (!res.ok) throw new Error('Failed');
         const data = await res.json();
-        if (Array.isArray(data.offerings) && data.offerings.length > 0) return data.offerings;
+        if (Array.isArray(data.offerings) && data.offerings.length > 0) {
+            _nerchasOfferingsCache = data.offerings;
+            return data.offerings;
+        }
+        if (_nerchasOfferingsCache && _nerchasOfferingsCache.length) return _nerchasOfferingsCache;
         return fallbackNerchas;
     } catch (e) {
+        if (_nerchasOfferingsCache && _nerchasOfferingsCache.length) return _nerchasOfferingsCache;
         return fallbackNerchas;
     }
 }
@@ -782,49 +813,155 @@ function renderHomeNerchas(offerings) {
     });
 }
 
-document.addEventListener('DOMContentLoaded', async () => {
-    const offerings = await getNerchas();
-    renderHomeNerchas(offerings);
-    if (document.getElementById('nerchas-home-grid')) {
-        setInterval(async () => {
-            const refreshed = await getNerchas();
-            renderHomeNerchas(refreshed);
-        }, 5000);
-    }
-});
+const LIVE_STREAM_OFF_AIR_INNER = `
+    <div class="video-content">
+        <p>Live is not right now</p>
+    </div>
+`;
 
-async function getLiveStreamUrl() {
+function inferLiveKindFromUrl(url) {
+    const u = (url || '').trim().toLowerCase();
+    if (!u) return '';
+    if (u.includes('youtu.be') || u.includes('youtube.com')) return 'youtube';
+    if (u.includes('facebook.com') || u.includes('fb.com') || u.includes('fb.watch')) return 'facebook';
+    return '';
+}
+
+function normalizeLiveStreamUrl(url) {
+    let u = (url || '').trim();
+    if (!u) return '';
+    if (!/^https?:\/\//i.test(u)) u = 'https://' + u;
+    u = u.replace(/^(https?:\/\/)m\.facebook\.com/i, '$1www.facebook.com');
+    u = u.replace(/^(https?:\/\/)m\.youtube\.com/i, '$1www.youtube.com');
+    return u;
+}
+
+function getFacebookJoinUrlFromStored(rawUrl) {
+    try {
+        const u = new URL((rawUrl || '').trim());
+        if (!/\/plugins\/video\.php/i.test(u.pathname)) return '';
+        const inner = u.searchParams.get('href');
+        if (inner) return normalizeLiveStreamUrl(decodeURIComponent(inner));
+    } catch (e) {}
+    return '';
+}
+
+function isFacebookPluginVideoUrl(url) {
+    return /facebook\.com\/plugins\/video\.php/i.test(url || '');
+}
+
+function buildYoutubeEmbedSrc(watchUrl) {
+    const normalized = normalizeLiveStreamUrl(watchUrl);
+    if (!normalized) return '';
+    try {
+        const u = new URL(normalized);
+        const host = u.hostname.replace(/^www\./i, '').toLowerCase();
+        if (host === 'youtu.be') {
+            const id = u.pathname.replace(/^\//, '').split('/')[0];
+            return id ? `https://www.youtube.com/embed/${id}` : '';
+        }
+        if (host === 'youtube.com' || host === 'm.youtube.com' || host === 'youtube-nocookie.com') {
+            if (u.pathname.startsWith('/embed/')) {
+                return `${u.origin}${u.pathname}${u.search}`;
+            }
+            const v = u.searchParams.get('v');
+            if (v) return `https://www.youtube.com/embed/${v}`;
+            const liveM = u.pathname.match(/^\/live\/([^/?]+)/);
+            if (liveM) return `https://www.youtube.com/embed/${liveM[1]}`;
+            const shortM = u.pathname.match(/^\/shorts\/([^/?]+)/);
+            if (shortM) return `https://www.youtube.com/embed/${shortM[1]}`;
+        }
+    } catch (e) {}
+    return '';
+}
+
+function buildFacebookEmbedSrc(rawOrNormalized) {
+    const normalized = normalizeLiveStreamUrl(rawOrNormalized);
+    if (!normalized) return '';
+    if (isFacebookPluginVideoUrl(normalized)) return normalized;
+    return `https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(normalized)}&show_text=false&width=560&height=315`;
+}
+
+async function getLiveStreamConfig() {
     try {
         const res = await fetch('/api/live-link');
         if (!res.ok) throw new Error('No live link');
         const data = await res.json();
-        return (data.url || '').trim();
+        const url = (data.url || '').trim();
+        let kind = (data.kind || '').trim().toLowerCase();
+        if (kind !== 'facebook' && kind !== 'youtube') kind = '';
+        if (url && !kind) kind = inferLiveKindFromUrl(url);
+        return { url, kind };
     } catch (e) {
-        return '';
+        return { url: '', kind: '' };
     }
 }
 
-function applyLiveStream(url) {
+function applyLiveStream(config) {
+    const rawUrl = config && config.url ? String(config.url).trim() : '';
+    let kind = config && config.kind ? String(config.kind).trim().toLowerCase() : '';
+    const normalized = normalizeLiveStreamUrl(rawUrl);
+    if (rawUrl && (!kind || (kind !== 'facebook' && kind !== 'youtube'))) {
+        kind = inferLiveKindFromUrl(normalized) || kind;
+    }
+    if (rawUrl && !kind) kind = inferLiveKindFromUrl(normalized);
+
+    let joinUrl = normalized;
+    if (kind === 'facebook') {
+        joinUrl = getFacebookJoinUrlFromStored(rawUrl) || normalized;
+    }
+
     const joinButtons = document.querySelectorAll('.join-live-btn');
     const placeholder = document.querySelector('.video-placeholder');
-    joinButtons.forEach(btn => {
-        btn.href = url || '#';
-        if (url) {
+    joinButtons.forEach((btn) => {
+        btn.href = joinUrl || '#';
+        if (joinUrl) {
             btn.setAttribute('target', '_blank');
+            btn.setAttribute('rel', 'noopener noreferrer');
         } else {
             btn.removeAttribute('target');
+            btn.removeAttribute('rel');
         }
     });
 
-    if (placeholder && url) {
-        const embedUrl = `https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(url)}&show_text=0&width=560`;
-        placeholder.innerHTML = `<iframe src="${embedUrl}" width="100%" height="100%" style="border:none;overflow:hidden" scrolling="no" frameborder="0" allowfullscreen></iframe>`;
+    if (!placeholder) return;
+
+    if (!rawUrl || !normalized || !kind) {
+        placeholder.innerHTML = LIVE_STREAM_OFF_AIR_INNER;
+        return;
+    }
+
+    let embedSrc = '';
+    if (kind === 'youtube') {
+        embedSrc = buildYoutubeEmbedSrc(normalized);
+    } else if (kind === 'facebook') {
+        embedSrc = buildFacebookEmbedSrc(rawUrl || normalized);
+    }
+
+    if (!embedSrc) {
+        placeholder.innerHTML = LIVE_STREAM_OFF_AIR_INNER;
+        return;
+    }
+
+    const title = kind === 'youtube' ? 'YouTube Live' : 'Facebook Live';
+    const safeSrc = embedSrc.replace(/"/g, '&quot;');
+    placeholder.innerHTML = `<iframe title="${title}" src="${safeSrc}" width="100%" height="100%" style="border:none;overflow:hidden;min-height:280px;" scrolling="no" frameborder="0" allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share" allowfullscreen></iframe>`;
+
+    const iframe = placeholder.querySelector('iframe');
+    if (iframe) {
+        iframe.addEventListener('error', () => {
+            placeholder.innerHTML = LIVE_STREAM_OFF_AIR_INNER;
+        });
     }
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
-    const liveUrl = await getLiveStreamUrl();
-    applyLiveStream(liveUrl);
+    if (document.getElementById('nerchas-home-grid')) {
+        const offerings = await getNerchas();
+        renderHomeNerchas(offerings);
+    }
+    const liveCfg = await getLiveStreamConfig();
+    applyLiveStream(liveCfg);
 });
 
 document.addEventListener('keydown', (e) => {

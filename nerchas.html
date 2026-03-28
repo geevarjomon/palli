@@ -39,6 +39,20 @@
     <section class="about fade-in" style="padding-top: 140px;">
         <div class="container">
             <h2 class="section-title">Nerchas</h2>
+
+            <div class="about-grid" style="margin-bottom: 2.5rem; align-items: center;">
+                <div class="about-image" style="text-align: center;">
+                    <a href="upi://pay?pa=9048583840@okbizaxis&amp;pn=Piravom%20Valiyapalli&amp;am=&amp;cu=INR" id="nercha-donation-qr-link" style="display: inline-block; max-width: 100%;" rel="nofollow">
+                        <img src="assets/qrcode.jpeg" alt="Scan to pay with UPI" style="width: 100%; max-width: 320px; height: auto; border-radius: 12px; border: 2px solid rgba(212, 175, 55, 0.45); display: block; margin: 0 auto;">
+                    </a>
+                </div>
+                <div class="about-content">
+                    <h3 style="color: var(--deep-maroon); font-family: 'Cinzel', serif; margin-bottom: 0.75rem;">Support the Church</h3>
+                    <p class="about-text" style="margin-bottom: 0.75rem;"><strong>UPI ID:</strong> 9048583840@okbizaxis</p>
+                    <p class="about-text" style="margin-bottom: 0;">Your generous offerings help maintain Piravom Valiyapalli, support liturgical services, and sustain community outreach. Tap the QR code to open your UPI app—you may enter any amount you wish. Thank you for prayerfully supporting St. Mary’s Orthodox Syrian Cathedral.</p>
+                </div>
+            </div>
+
             <div class="nerchas-home-grid" id="nerchas-page-grid"></div>
         </div>
     </section>
@@ -58,23 +72,43 @@
 
     <script src="script.js"></script>
     <script>
-        const fallbackNerchasPage = [
-            { english: 'anitha', malayalam: 'അനിത', price: 10, image: '' },
-            { english: 'v. kurbana', malayalam: 'വി. കുർബാന', price: 10, image: '' },
-            { english: 'prarthana', malayalam: 'പ്രാർത്ഥന', price: 10, image: '' },
-            { english: 'panthrandu paithangulude nercha', malayalam: 'പന്ത്രണ്ടു പൈതങ്ങളുടെ നേർച്ച', price: 500, image: '' }
-        ];
+        function ensureNerchaComingSoonModal() {
+            if (document.getElementById('nercha-coming-soon-modal')) return;
+            const wrap = document.createElement('div');
+            wrap.id = 'nercha-coming-soon-modal';
+            wrap.className = 'nercha-purchase-modal';
+            wrap.setAttribute('aria-hidden', 'true');
+            wrap.innerHTML = `
+                <div class="nercha-purchase-modal-backdrop" data-nercha-soon-close></div>
+                <div class="nercha-purchase-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="nercha-soon-title">
+                    <button type="button" class="nercha-purchase-modal-close" data-nercha-soon-close aria-label="Close">&times;</button>
+                    <h3 id="nercha-soon-title" class="nercha-purchase-modal-title">Coming Soon</h3>
+                    <p class="nercha-purchase-modal-sub">Online nercha booking will be available here shortly. Thank you for your patience.</p>
+                    <div class="nercha-purchase-modal-actions">
+                        <button type="button" class="btn btn-primary" data-nercha-soon-close>OK</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(wrap);
+            wrap.querySelectorAll('[data-nercha-soon-close]').forEach(el => {
+                el.addEventListener('click', () => closeNerchaComingSoonModal());
+            });
+        }
 
-        async function getOfferings() {
-            try {
-                const res = await fetch('/api/nerchas');
-                if (!res.ok) throw new Error('Failed');
-                const data = await res.json();
-                if (Array.isArray(data.offerings) && data.offerings.length) return data.offerings;
-                return fallbackNerchasPage;
-            } catch (e) {
-                return fallbackNerchasPage;
-            }
+        function openNerchaComingSoonModal() {
+            ensureNerchaComingSoonModal();
+            const wrap = document.getElementById('nercha-coming-soon-modal');
+            wrap.classList.add('active');
+            wrap.setAttribute('aria-hidden', 'false');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeNerchaComingSoonModal() {
+            const wrap = document.getElementById('nercha-coming-soon-modal');
+            if (!wrap) return;
+            wrap.classList.remove('active');
+            wrap.setAttribute('aria-hidden', 'true');
+            document.body.style.overflow = '';
         }
 
         function renderOfferings(items) {
@@ -84,6 +118,10 @@
             items.forEach((item, idx) => {
                 const card = document.createElement('div');
                 card.className = 'nercha-compact-card';
+                card.setAttribute('role', 'button');
+                card.setAttribute('tabindex', '0');
+                card.setAttribute('aria-label', 'Nercha details — coming soon');
+                card.style.cursor = 'pointer';
                 card.innerHTML = `
                     <div class="nercha-coupon-wrap">
                         <img src="${getNerchaImageSrc(item, idx)}" alt="${item.english || 'Nercha'}" class="nercha-coupon-image">
@@ -91,20 +129,27 @@
                     <div class="nercha-ml">${item.malayalam || ''}</div>
                     <div class="nercha-en">${item.english || ''}</div>
                     <div class="nercha-price">Price: ${item.price ?? 0}</div>
-                    <button type="button" class="btn btn-primary nercha-buy-btn" style="margin-top:0.75rem;">Buy</button>
                 `;
-                card.querySelector('.nercha-buy-btn').addEventListener('click', () => openNerchaPurchaseModal(item));
+                card.addEventListener('click', () => openNerchaComingSoonModal());
+                card.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        openNerchaComingSoonModal();
+                    }
+                });
                 grid.appendChild(card);
             });
         }
 
         document.addEventListener('DOMContentLoaded', async () => {
-            const offerings = await getOfferings();
+            const offerings = await getNerchas();
             renderOfferings(offerings);
-            setInterval(async () => {
-                const refreshed = await getOfferings();
-                renderOfferings(refreshed);
-            }, 5000);
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key !== 'Escape') return;
+            const m = document.getElementById('nercha-coming-soon-modal');
+            if (m && m.classList.contains('active')) closeNerchaComingSoonModal();
         });
     </script>
 </body>
