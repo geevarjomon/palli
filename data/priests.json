@@ -1,0 +1,22 @@
+{
+  "priests": [
+    {
+      "name": "Fr. Benoy John",
+      "phone": "+91 94953 14833",
+      "image": "benoy.jpeg",
+      "is_vicar": false
+    },
+    {
+      "name": "Fr. Elias Cherukattu",
+      "phone": "+91 9447820111",
+      "image": "elias.jpeg",
+      "is_vicar": true
+    },
+    {
+      "name": "Fr. Babu Abraham",
+      "phone": "+91 96455 94306",
+      "image": "babu.jpeg",
+      "is_vicar": false
+    }
+  ]
+}

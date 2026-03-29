@@ -1,0 +1,19 @@
+{
+  "items": [
+    {
+      "time": "6:30 AM",
+      "title": "Morning Qurbana",
+      "notes": ""
+    },
+    {
+      "time": "6:00 PM",
+      "title": "Evening Prayer",
+      "notes": ""
+    },
+    {
+      "time": "8:00 AM",
+      "title": "Sunday Special Qurbana",
+      "notes": "Sunday"
+    }
+  ]
+}

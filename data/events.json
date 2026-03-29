@@ -1,0 +1,94 @@
+{
+  "events": [
+    {
+      "date": "January 1 – 6",
+      "event": "Danaha Perunal",
+      "description": "Join us for this sacred celebration at Piravom Valiyapalli.",
+      "image": "danaha.jpeg"
+    },
+    {
+      "date": "March 15 – 19",
+      "event": "Convention",
+      "description": "Join us for this sacred celebration at Piravom Valiyapalli.",
+      "image": "convention.jpeg"
+    },
+    {
+      "date": "March 25",
+      "event": "Vachanipp Perunall",
+      "description": "Join us for this sacred celebration at Piravom Valiyapalli.",
+      "image": "vachanipp.jpeg"
+    },
+    {
+      "date": "March 29",
+      "event": "Oshana",
+      "description": "Join us for this sacred celebration at Piravom Valiyapalli.",
+      "image": "oshana.jpeg"
+    },
+    {
+      "date": "April 2",
+      "event": "Pesaha Vyazham",
+      "description": "Join us for this sacred celebration at Piravom Valiyapalli.",
+      "image": "pesaha.jpg"
+    },
+    {
+      "date": "April 3",
+      "event": "Good Friday",
+      "description": "Join us for this sacred celebration at Piravom Valiyapalli.",
+      "image": "friday.jpeg"
+    },
+    {
+      "date": "April 4",
+      "event": "Holy Saturday",
+      "description": "Join us for this sacred celebration at Piravom Valiyapalli.",
+      "image": "saturday.jpg"
+    },
+    {
+      "date": "April 5",
+      "event": "Easter",
+      "description": "Join us for this sacred celebration at Piravom Valiyapalli.",
+      "image": "easter.jpg"
+    },
+    {
+      "date": "April 5",
+      "event": "Paithel Nercha",
+      "description": "Join us for this sacred celebration at Piravom Valiyapalli.",
+      "image": "nercha.jpeg"
+    },
+    {
+      "date": "April 19",
+      "event": "Paithel Vechoot Nercha",
+      "description": "Join us for this sacred celebration at Piravom Valiyapalli.",
+      "image": "paithel.jpeg"
+    },
+    {
+      "date": "May 6 – 7",
+      "event": "Vishudha Geevarghese Sahadayude Perunal",
+      "description": "Join us for this sacred celebration at Piravom Valiyapalli.",
+      "image": "geevarghese.jpeg"
+    },
+    {
+      "date": "June 29",
+      "event": "Sleeha Perunal",
+      "description": "Join us for this sacred celebration at Piravom Valiyapalli.",
+      "image": "sleeha.jpeg"
+    },
+    {
+      "date": "August 14 – 15",
+      "event": "Vishudha Maadhavinte Vaagippu Perunal",
+      "description": "Join us for this sacred celebration at Piravom Valiyapalli.",
+      "image": "maadhavu.jpeg"
+    },
+    {
+      "date": "October 7 – 8",
+      "event": "Kallitta Perunal",
+      "description": "Join us for this sacred celebration at Piravom Valiyapalli.",
+      "image": "kallitta.jpeg"
+    },
+    {
+      "date": "December 25",
+      "event": "Christmas",
+      "description": "Join us for this sacred celebration at Piravom Valiyapalli.",
+      "image": "christmas.jpeg"
+    }
+  ]
+}

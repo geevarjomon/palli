@@ -544,7 +544,7 @@ console.log('%c🙏 Welcome to Piravom Valiyapalli Website 🙏', 'font-size: 20
 console.log('%cSt. Mary\'s Orthodox Syrian Cathedral - A Sacred Pilgrimage of Faith, Tradition and History', 'font-size: 14px; color: #722f37;');
 
 // Church Events Data and Population
-const churchEvents = [
+let churchEvents = [
     { date: 'January 1 – 6', event: 'Danaha Perunal', image: 'danaha.jpeg' },
     { date: 'March 15 – 19', event: 'Convention', image: 'convention.jpeg' },
     { date: 'March 25', event: 'Vachanipp Perunall', image: 'vachanipp.jpeg' },
@@ -567,6 +567,18 @@ const fallbackNerchas = [
     { english: 'v. kurbana', malayalam: 'വി. കുർബാന', price: 10, image: '' },
     { english: 'prarthana', malayalam: 'പ്രാർത്ഥന', price: 10, image: '' },
     { english: 'panthrandu paithangulude nercha', malayalam: 'പന്ത്രണ്ടു പൈതങ്ങളുടെ നേർച്ച', price: 500, image: '' }
+];
+
+const fallbackLiveSchedule = [
+    { time: '6:30 AM', title: 'Morning Qurbana', notes: '' },
+    { time: '6:00 PM', title: 'Evening Prayer', notes: '' },
+    { time: '8:00 AM', title: 'Sunday Special Qurbana', notes: 'Sunday' }
+];
+
+const fallbackPriests = [
+    { name: 'Fr. Benoy John', phone: '+91 94953 14833', image: 'benoy.jpeg', is_vicar: false },
+    { name: 'Fr. Elias Cherukattu', phone: '+91 9447820111', image: 'elias.jpeg', is_vicar: true },
+    { name: 'Fr. Babu Abraham', phone: '+91 96455 94306', image: 'babu.jpeg', is_vicar: false }
 ];
 
 function getCouponImageByIndex(index) {
@@ -680,6 +692,137 @@ function closeNerchaPurchaseModal() {
     nerchaPurchaseContext = null;
 }
 
+function normalizeAssetPath(ref) {
+    const p = (ref || '').trim();
+    if (!p) return '';
+    if (p.startsWith('http://') || p.startsWith('https://') || p.startsWith('/')) return p;
+    if (p.startsWith('assets/')) return p;
+    if (p.includes('/')) return `assets/${p}`;
+    return `assets/${p}`;
+}
+
+async function loadHomepageContent() {
+    const hero = document.querySelector('.hero');
+    if (!hero) return;
+    try {
+        const res = await fetch('/api/homepage-content');
+        if (!res.ok) return;
+        const data = await res.json();
+        const desktop = normalizeAssetPath(data.hero_desktop_image || '');
+        const mobile = normalizeAssetPath(data.hero_mobile_image || '');
+        if (desktop) hero.style.backgroundImage = `url('${desktop}')`;
+        if (mobile) {
+            const s = document.createElement('style');
+            s.id = 'dynamic-hero-mobile-style';
+            s.textContent = `@media (max-width: 768px) { .hero { background-image: url('${mobile}') !important; } }`;
+            const old = document.getElementById('dynamic-hero-mobile-style');
+            if (old) old.remove();
+            document.head.appendChild(s);
+        }
+    } catch (e) {}
+}
+
+async function loadAboutContent() {
+    const img = document.getElementById('about-section-image');
+    const title = document.getElementById('about-section-title');
+    if (!img || !title) return;
+    try {
+        const res = await fetch('/api/about-content');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.image) img.src = normalizeAssetPath(data.image);
+        if (data.title) title.textContent = data.title;
+        const ps = Array.isArray(data.paragraphs) ? data.paragraphs : [];
+        ['about-section-p1', 'about-section-p2', 'about-section-p3'].forEach((id, i) => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.textContent = ps[i] || '';
+            el.style.display = ps[i] ? 'block' : 'none';
+        });
+    } catch (e) {}
+}
+
+function renderPriests(priests) {
+    const grid = document.getElementById('priests-grid');
+    if (!grid) return;
+    const rows = Array.isArray(priests) && priests.length ? priests : fallbackPriests;
+    const vicarIdx = rows.findIndex(p => p && p.is_vicar);
+    grid.innerHTML = rows.map((p, i) => {
+        const cls = i === 0 ? 'priest-card-left' : i === 1 ? 'priest-card-center' : 'priest-card-right';
+        const img = normalizeAssetPath((p && p.image) ? p.image : '');
+        const name = (p && p.name) ? p.name : '';
+        const phone = (p && p.phone) ? p.phone : '';
+        const isVicar = i === vicarIdx;
+        return `
+            <div class="priest-card ${cls}">
+                <div class="priest-image">
+                    <img src="${img}" alt="${name}">
+                </div>
+                <div class="priest-details">
+                    <h3>${name}</h3>
+                    <p>${phone}</p>
+                    ${isVicar ? '<p class="priest-role">Vicar</p>' : ''}
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+async function loadPriestsContent() {
+    if (!document.getElementById('priests-grid')) return;
+    try {
+        const res = await fetch('/api/priests');
+        if (!res.ok) throw new Error('failed');
+        const data = await res.json();
+        renderPriests(data.priests || []);
+    } catch (e) {
+        renderPriests(fallbackPriests);
+    }
+}
+
+async function loadHistoryContent() {
+    const t1 = document.getElementById('history-main-title');
+    if (!t1) return;
+    try {
+        const res = await fetch('/api/history-content');
+        if (!res.ok) return;
+        const data = await res.json();
+        const tMain = document.getElementById('history-main-title');
+        const pMain = document.getElementById('history-main-text');
+        const tOld = document.getElementById('history-old-title');
+        const pOld = document.getElementById('history-old-text');
+        if (tMain && data.history_title) tMain.textContent = data.history_title;
+        if (pMain && data.history_text) pMain.textContent = data.history_text;
+        if (tOld && data.old_history_title) tOld.textContent = data.old_history_title;
+        if (pOld && data.old_history_text) pOld.textContent = data.old_history_text;
+        const imgs = Array.isArray(data.images) ? data.images : [];
+        const top = document.getElementById('history-images-top');
+        const bottom = document.getElementById('history-images-bottom');
+        if (top && bottom && imgs.length) {
+            const mk = (src) => `<img src="${normalizeAssetPath(src)}" alt="History Image" style="width: 100%; height: auto; border-radius: 12px; object-fit: contain; display: block;">`;
+            top.innerHTML = imgs.slice(0, 2).map(mk).join('');
+            bottom.innerHTML = imgs.slice(2, 4).map(mk).join('');
+        }
+    } catch (e) {}
+}
+
+async function loadHKMediaContent() {
+    const logo = document.getElementById('hkmedia-logo-image');
+    if (!logo) return;
+    try {
+        const res = await fetch('/api/hkmedia-content');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.logo) logo.src = normalizeAssetPath(data.logo);
+        const desc = document.getElementById('hkmedia-description-text');
+        if (desc && data.description) desc.textContent = data.description;
+        const contacts = document.getElementById('hkmedia-contacts-text');
+        if (contacts && Array.isArray(data.contacts) && data.contacts.length) {
+            contacts.innerHTML = `<strong>Phone</strong><br>${data.contacts.map(c => String(c)).join('<br>')}`;
+        }
+    } catch (e) {}
+}
+
 // Function to get month number from month name
 function getMonthNumber(monthName) {
     const months = {
@@ -758,7 +901,7 @@ function populateEvents() {
                 </div>
                 <h3>${eventData.event}</h3>
                 <p class="festival-date">${eventData.date}</p>
-                <p>Join us for this sacred celebration at Piravom Valiyapalli.</p>
+                <p>${eventData.description || 'Join us for this sacred celebration at Piravom Valiyapalli.'}</p>
             </div>
         `;
     }).join('');
@@ -770,6 +913,24 @@ function populateEvents() {
 document.addEventListener('DOMContentLoaded', () => {
     populateEvents();
 });
+
+async function loadEventsContent() {
+    if (!document.getElementById('events-grid')) return;
+    try {
+        const res = await fetch('/api/events');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (Array.isArray(data.events) && data.events.length) {
+            churchEvents = data.events.map(ev => ({
+                date: ev.date || '',
+                event: ev.event || '',
+                image: ev.image || '',
+                description: ev.description || 'Join us for this sacred celebration at Piravom Valiyapalli.'
+            }));
+            populateEvents();
+        }
+    } catch (e) {}
+}
 
 let _nerchasOfferingsCache = null;
 
@@ -882,6 +1043,32 @@ function buildFacebookEmbedSrc(rawOrNormalized) {
     return `https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(normalized)}&show_text=false&width=560&height=315`;
 }
 
+function renderLiveScheduleList(items) {
+    const list = document.getElementById('live-schedule-list');
+    if (!list) return;
+    const rows = Array.isArray(items) && items.length ? items : fallbackLiveSchedule;
+    list.innerHTML = rows.map((r) => {
+        const time = (r.time || '').trim();
+        const title = (r.title || '').trim();
+        const notes = (r.notes || '').trim();
+        const icon = notes.toLowerCase().includes('sunday') ? 'fa-calendar' : 'fa-clock';
+        const suffix = notes ? ` (${notes})` : '';
+        return `<li><i class="fas ${icon}"></i> ${title}: ${time}${suffix}</li>`;
+    }).join('');
+}
+
+async function loadLiveSchedule() {
+    if (!document.getElementById('live-schedule-list')) return;
+    try {
+        const res = await fetch('/api/live-schedule');
+        if (!res.ok) throw new Error('failed');
+        const data = await res.json();
+        renderLiveScheduleList(data.items || []);
+    } catch (e) {
+        renderLiveScheduleList(fallbackLiveSchedule);
+    }
+}
+
 async function getLiveStreamConfig() {
     try {
         const res = await fetch('/api/live-link');
@@ -956,6 +1143,13 @@ function applyLiveStream(config) {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
+    await loadHomepageContent();
+    await loadAboutContent();
+    await loadEventsContent();
+    await loadPriestsContent();
+    await loadHistoryContent();
+    await loadHKMediaContent();
+    await loadLiveSchedule();
     if (document.getElementById('nerchas-home-grid')) {
         const offerings = await getNerchas();
         renderHomeNerchas(offerings);

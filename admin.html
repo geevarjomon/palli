@@ -16,6 +16,17 @@
     
     <!-- Custom CSS -->
     <link rel="stylesheet" href="style.css">
+    <style>
+        .super-panel-title {
+            color: var(--gold);
+            text-shadow: 0 0 8px rgba(212, 175, 55, 0.45), 0 0 16px rgba(212, 175, 55, 0.2);
+            animation: superPanelGlow 2.8s ease-in-out infinite;
+        }
+        @keyframes superPanelGlow {
+            0%, 100% { text-shadow: 0 0 7px rgba(212, 175, 55, 0.35), 0 0 14px rgba(212, 175, 55, 0.16); }
+            50% { text-shadow: 0 0 10px rgba(212, 175, 55, 0.55), 0 0 22px rgba(212, 175, 55, 0.28); }
+        }
+    </style>
 </head>
 <body>
     <!-- Navigation -->
@@ -71,12 +82,13 @@
 
             <div id="admin-panel" style="display: none;">
                 <div style="display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem;">
-                    <h2 class="section-title" style="margin: 0; flex: 1 1 auto;">Admin Panel</h2>
+                    <h2 id="admin-main-heading" class="section-title" style="margin: 0; flex: 1 1 auto;">Admin Panel</h2>
                     <button type="button" id="logout-btn" class="btn btn-secondary-dark">
                         <i class="fas fa-sign-out-alt"></i>
                         Logout
                     </button>
                 </div>
+                <p id="super-panel-warning" style="display:none; margin: -0.85rem 0 1rem; color: #b22222; font-size: 0.84rem; font-weight: 600;">warning: this panel contains full web control, edit carefully.</p>
 
                 <div class="admin-two-col">
                     <div class="contact-form">
@@ -121,19 +133,35 @@
                         </div>
                         <div id="live-url-status" style="margin-bottom: 1.25rem; font-weight: 600;"></div>
 
-                        <h3 style="font-size: 1.5rem; margin-bottom: 1rem; color: var(--deep-maroon);">Edit Offerings (/nerchas)</h3>
-                        <div id="offerings-editor" style="display: flex; flex-direction: column; gap: 1.25rem;"></div>
-                        <div class="form-actions" style="margin-top: 1.25rem;">
-                            <button type="button" id="add-offering-btn" class="btn btn-secondary-dark">
+                        <h3 style="font-size: 1.5rem; margin-bottom: 1rem; color: var(--deep-maroon);">Live Holy Qurbana Service Schedule</h3>
+                        <div id="live-schedule-editor" style="display:flex; flex-direction:column; gap:0.75rem;"></div>
+                        <div class="form-actions" style="margin-top: 0.75rem;">
+                            <button type="button" id="add-live-schedule-btn" class="btn btn-secondary-dark">
                                 <i class="fas fa-plus"></i>
-                                Add Nercha
+                                Add Schedule Row
+                            </button>
+                            <button type="button" id="save-live-schedule-btn" class="btn btn-primary">
+                                <i class="fas fa-save"></i>
+                                Save Schedule
                             </button>
                         </div>
-                        <div id="offerings-save-status" style="margin-top: 1rem; font-weight: 600;">Auto-save enabled</div>
+                        <div id="live-schedule-status" style="margin-top: 0.75rem; margin-bottom: 1rem; font-weight: 600;"></div>
+
+                        <div id="offerings-section">
+                            <h3 style="font-size: 1.5rem; margin-bottom: 1rem; color: var(--deep-maroon);">Edit Offerings (/nerchas)</h3>
+                            <div id="offerings-editor" style="display: flex; flex-direction: column; gap: 1.25rem;"></div>
+                            <div class="form-actions" style="margin-top: 1.25rem;">
+                                <button type="button" id="add-offering-btn" class="btn btn-secondary-dark">
+                                    <i class="fas fa-plus"></i>
+                                    Add Nercha
+                                </button>
+                            </div>
+                            <div id="offerings-save-status" style="margin-top: 1rem; font-weight: 600;">Auto-save enabled</div>
+                        </div>
                     </div>
                 </div>
 
-                <div class="contact-form" style="margin-top: 2rem;">
+                <div id="calendar-section" class="contact-form" style="margin-top: 2rem;">
                     <h3 style="font-size: 1.5rem; margin-bottom: 1rem; color: var(--deep-maroon);">Calendar Management</h3>
                     <p style="color: var(--medium-gray); margin-bottom: 1rem; font-size: 0.95rem;">Upload or delete calendar images. Images are stored in assets/calendar/ and displayed on the site.</p>
                     <form id="calendar-upload-form">
@@ -149,6 +177,73 @@
                         <div id="calendar-upload-status" style="margin-top: 1rem; font-weight: 600;"></div>
                     </form>
                     <div id="calendar-admin-grid" class="gallery-admin-grid" style="margin-top: 1rem;"></div>
+                </div>
+
+                <div id="super-admin-content-section" class="contact-form" style="margin-top: 2rem; display:none;">
+                    <h3 style="font-size: 1.5rem; margin-bottom: 1rem; color: var(--deep-maroon);">Super Admin Content Controls</h3>
+                    <div style="display:grid; gap:1rem;">
+                        <div>
+                            <div style="font-weight:700; color:var(--deep-maroon); margin-bottom:0.5rem;">Homepage Hero</div>
+                            <div class="form-group"><input type="text" id="super-hero-desktop" placeholder="Desktop image (e.g. church_exterior.jpg.jpg)"></div>
+                            <div class="form-group"><input type="file" id="super-hero-desktop-file" accept="image/*"></div>
+                            <div class="form-actions" style="margin-top:0.25rem; margin-bottom:0.75rem;"><button type="button" id="replace-super-hero-desktop-btn" class="btn btn-secondary-dark">Replace Desktop Image</button></div>
+                            <div class="form-group"><input type="text" id="super-hero-mobile" placeholder="Mobile image (e.g. mobile_version.jpeg)"></div>
+                            <div class="form-group"><input type="file" id="super-hero-mobile-file" accept="image/*"></div>
+                            <div class="form-actions" style="margin-top:0.25rem; margin-bottom:0.75rem;"><button type="button" id="replace-super-hero-mobile-btn" class="btn btn-secondary-dark">Replace Mobile Image</button></div>
+                            <button type="button" id="save-homepage-content-btn" class="btn btn-primary">Save Homepage</button>
+                            <div id="homepage-content-status" style="margin-top:0.5rem; font-weight:600;"></div>
+                        </div>
+                        <div>
+                            <div style="font-weight:700; color:var(--deep-maroon); margin-bottom:0.5rem;">About Section</div>
+                            <div class="form-group"><input type="text" id="super-about-image" placeholder="About image filename"></div>
+                            <div class="form-group"><input type="file" id="super-about-image-file" accept="image/*"></div>
+                            <div class="form-actions" style="margin-top:0.25rem; margin-bottom:0.75rem;"><button type="button" id="replace-super-about-image-btn" class="btn btn-secondary-dark">Replace About Image</button></div>
+                            <div class="form-group"><textarea id="super-about-text" rows="6" placeholder="About description paragraphs (one paragraph per line)"></textarea></div>
+                            <button type="button" id="save-about-content-btn" class="btn btn-primary">Save About</button>
+                            <div id="about-content-status" style="margin-top:0.5rem; font-weight:600;"></div>
+                        </div>
+                        <div>
+                            <div style="font-weight:700; color:var(--deep-maroon); margin-bottom:0.5rem;">History (non-boxed content only)</div>
+                            <div class="form-group"><input type="text" id="super-history-title" placeholder="Main history title"></div>
+                            <div class="form-group"><textarea id="super-history-text" rows="5" placeholder="Main history text"></textarea></div>
+                            <div class="form-group"><input type="text" id="super-old-history-title" placeholder="Old history title"></div>
+                            <div class="form-group"><textarea id="super-old-history-text" rows="5" placeholder="Old history text"></textarea></div>
+                            <div class="form-group"><input type="text" id="super-history-images" placeholder="History images (comma separated: gallery/church_exterior.jpg.jpg,...)"></div>
+                            <div class="form-group"><input type="text" id="super-history-replace-target" placeholder="History image ref to replace (e.g. gallery/church_exterior.jpg.jpg)"></div>
+                            <div class="form-group"><input type="file" id="super-history-replace-file" accept="image/*"></div>
+                            <div class="form-actions" style="margin-top:0.25rem; margin-bottom:0.75rem;"><button type="button" id="replace-super-history-image-btn" class="btn btn-secondary-dark">Replace History Image</button></div>
+                            <button type="button" id="save-history-content-btn" class="btn btn-primary">Save History</button>
+                            <div id="history-content-status" style="margin-top:0.5rem; font-weight:600;"></div>
+                        </div>
+                        <div>
+                            <div style="font-weight:700; color:var(--deep-maroon); margin-bottom:0.5rem;">Church Events (JSON array)</div>
+                            <div class="form-group"><textarea id="super-events-json" rows="7" placeholder='[{"date":"","event":"","description":"","image":""}]'></textarea></div>
+                            <div class="form-group"><input type="text" id="super-events-replace-target" placeholder="Event image ref to replace (e.g. danaha.jpeg)"></div>
+                            <div class="form-group"><input type="file" id="super-events-replace-file" accept="image/*"></div>
+                            <div class="form-actions" style="margin-top:0.25rem; margin-bottom:0.75rem;"><button type="button" id="replace-super-events-image-btn" class="btn btn-secondary-dark">Replace Event Image</button></div>
+                            <button type="button" id="save-events-content-btn" class="btn btn-primary">Save Events</button>
+                            <div id="events-content-status" style="margin-top:0.5rem; font-weight:600;"></div>
+                        </div>
+                        <div>
+                            <div style="font-weight:700; color:var(--deep-maroon); margin-bottom:0.5rem;">Priests (JSON array, one is_vicar=true)</div>
+                            <div class="form-group"><textarea id="super-priests-json" rows="7" placeholder='[{"name":"","phone":"","image":"","is_vicar":false}]'></textarea></div>
+                            <div class="form-group"><input type="text" id="super-priests-replace-target" placeholder="Priest image ref to replace (e.g. benoy.jpeg)"></div>
+                            <div class="form-group"><input type="file" id="super-priests-replace-file" accept="image/*"></div>
+                            <div class="form-actions" style="margin-top:0.25rem; margin-bottom:0.75rem;"><button type="button" id="replace-super-priests-image-btn" class="btn btn-secondary-dark">Replace Priest Image</button></div>
+                            <button type="button" id="save-priests-content-btn" class="btn btn-primary">Save Priests</button>
+                            <div id="priests-content-status" style="margin-top:0.5rem; font-weight:600;"></div>
+                        </div>
+                        <div>
+                            <div style="font-weight:700; color:var(--deep-maroon); margin-bottom:0.5rem;">HK Media</div>
+                            <div class="form-group"><input type="text" id="super-hkmedia-logo" placeholder="HK media logo filename"></div>
+                            <div class="form-group"><input type="file" id="super-hkmedia-logo-file" accept="image/*"></div>
+                            <div class="form-actions" style="margin-top:0.25rem; margin-bottom:0.75rem;"><button type="button" id="replace-super-hkmedia-logo-btn" class="btn btn-secondary-dark">Replace HK Media Logo</button></div>
+                            <div class="form-group"><textarea id="super-hkmedia-description" rows="5" placeholder="HK media description"></textarea></div>
+                            <div class="form-group"><input type="text" id="super-hkmedia-contacts" placeholder="Contacts (comma separated)"></div>
+                            <button type="button" id="save-hkmedia-content-btn" class="btn btn-primary">Save HK Media</button>
+                            <div id="hkmedia-content-status" style="margin-top:0.5rem; font-weight:600;"></div>
+                        </div>
+                    </div>
                 </div>
 
                 <div style="margin-top: 2rem;" class="contact-form">
@@ -196,6 +291,17 @@
         const saveLiveFacebookBtn = document.getElementById('save-live-facebook-btn');
         const saveLiveYoutubeBtn = document.getElementById('save-live-youtube-btn');
         const liveUrlStatus = document.getElementById('live-url-status');
+        const offeringsSection = document.getElementById('offerings-section');
+        const calendarSection = document.getElementById('calendar-section');
+        const adminMainHeading = document.getElementById('admin-main-heading');
+        const superPanelWarning = document.getElementById('super-panel-warning');
+        const superAdminContentSection = document.getElementById('super-admin-content-section');
+        const liveScheduleEditor = document.getElementById('live-schedule-editor');
+        const addLiveScheduleBtn = document.getElementById('add-live-schedule-btn');
+        const saveLiveScheduleBtn = document.getElementById('save-live-schedule-btn');
+        const liveScheduleStatus = document.getElementById('live-schedule-status');
+        let currentAdminRole = '';
+        let currentAdminUsername = '';
 
         let offeringsSaveTimer = null;
 
@@ -207,6 +313,97 @@
         function showLoginUI() {
             adminPanel.style.display = 'none';
             loginPanel.style.display = 'block';
+        }
+
+        function applyRoleUI() {
+            const isSuper = currentAdminRole === 'super_admin';
+            const isJobin = isSuper && currentAdminUsername === 'jobin';
+            if (adminMainHeading) {
+                adminMainHeading.textContent = isJobin ? 'SUPER PANEL' : 'Admin Panel';
+                if (isJobin) adminMainHeading.classList.add('super-panel-title');
+                else adminMainHeading.classList.remove('super-panel-title');
+            }
+            if (superPanelWarning) superPanelWarning.style.display = isJobin ? 'block' : 'none';
+            if (offeringsSection) offeringsSection.style.display = isSuper ? 'block' : 'none';
+            if (calendarSection) calendarSection.style.display = isSuper ? 'block' : 'none';
+            if (superAdminContentSection) superAdminContentSection.style.display = isSuper ? 'block' : 'none';
+        }
+
+        function renderLiveSchedule(items) {
+            if (!liveScheduleEditor) return;
+            liveScheduleEditor.innerHTML = '';
+            (items || []).forEach((it, idx) => {
+                const row = document.createElement('div');
+                row.style.cssText = 'display:grid;grid-template-columns:1fr 1.4fr 1.2fr auto;gap:0.5rem;align-items:center;';
+                row.innerHTML = `
+                    <input class="live-time" data-idx="${idx}" type="text" placeholder="Time" value="${(it.time || '').replace(/"/g, '&quot;')}">
+                    <input class="live-title" data-idx="${idx}" type="text" placeholder="Service name" value="${(it.title || '').replace(/"/g, '&quot;')}">
+                    <input class="live-notes" data-idx="${idx}" type="text" placeholder="Optional notes" value="${(it.notes || '').replace(/"/g, '&quot;')}">
+                    <button type="button" class="btn btn-secondary-dark live-del-row" data-idx="${idx}">Delete</button>
+                `;
+                liveScheduleEditor.appendChild(row);
+            });
+            liveScheduleEditor.querySelectorAll('.live-del-row').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const idx = Number(btn.dataset.idx);
+                    const rows = collectLiveScheduleRows();
+                    rows.splice(idx, 1);
+                    renderLiveSchedule(rows);
+                });
+            });
+        }
+
+        function collectLiveScheduleRows() {
+            const times = liveScheduleEditor ? liveScheduleEditor.querySelectorAll('.live-time') : [];
+            const titles = liveScheduleEditor ? liveScheduleEditor.querySelectorAll('.live-title') : [];
+            const notes = liveScheduleEditor ? liveScheduleEditor.querySelectorAll('.live-notes') : [];
+            return Array.from(times).map((_, i) => ({
+                time: (times[i].value || '').trim(),
+                title: (titles[i].value || '').trim(),
+                notes: (notes[i].value || '').trim()
+            }));
+        }
+
+        async function loadRoleAwareContentEditors() {
+            try {
+                const schedule = await apiGet('/api/live-schedule');
+                renderLiveSchedule(Array.isArray(schedule.items) ? schedule.items : []);
+            } catch (e) {}
+
+            if (currentAdminRole !== 'super_admin') return;
+
+            try {
+                const home = await apiGet('/api/homepage-content');
+                document.getElementById('super-hero-desktop').value = home.hero_desktop_image || '';
+                document.getElementById('super-hero-mobile').value = home.hero_mobile_image || '';
+            } catch (e) {}
+            try {
+                const about = await apiGet('/api/about-content');
+                document.getElementById('super-about-image').value = about.image || '';
+                document.getElementById('super-about-text').value = Array.isArray(about.paragraphs) ? about.paragraphs.join('\n') : '';
+            } catch (e) {}
+            try {
+                const hist = await apiGet('/api/history-content');
+                document.getElementById('super-history-title').value = hist.history_title || '';
+                document.getElementById('super-history-text').value = hist.history_text || '';
+                document.getElementById('super-old-history-title').value = hist.old_history_title || '';
+                document.getElementById('super-old-history-text').value = hist.old_history_text || '';
+                document.getElementById('super-history-images').value = Array.isArray(hist.images) ? hist.images.join(', ') : '';
+            } catch (e) {}
+            try {
+                const ev = await apiGet('/api/events');
+                document.getElementById('super-events-json').value = JSON.stringify(ev.events || [], null, 2);
+            } catch (e) {}
+            try {
+                const pr = await apiGet('/api/priests');
+                document.getElementById('super-priests-json').value = JSON.stringify(pr.priests || [], null, 2);
+            } catch (e) {}
+            try {
+                const hk = await apiGet('/api/hkmedia-content');
+                document.getElementById('super-hkmedia-logo').value = hk.logo || '';
+                document.getElementById('super-hkmedia-description').value = hk.description || '';
+                document.getElementById('super-hkmedia-contacts').value = Array.isArray(hk.contacts) ? hk.contacts.join(', ') : '';
+            } catch (e) {}
         }
 
         function renderOfferings(offerings) {
@@ -342,33 +539,60 @@
             return await res.json().catch(() => ({}));
         }
 
-        async function loadAdminData() {
-            const offeringsData = await apiGet('/api/nerchas');
-            renderOfferings(Array.isArray(offeringsData.offerings) ? offeringsData.offerings : []);
-
-            const purchasesData = await apiGet('/api/purchases');
-            purchasesList.innerHTML = '';
-            const purchases = Array.isArray(purchasesData.purchases) ? purchasesData.purchases : [];
-            purchases.sort((a, b) => {
-                const tb = Number(b.timestamp) || Date.parse(b.date || '') || 0;
-                const ta = Number(a.timestamp) || Date.parse(a.date || '') || 0;
-                return tb - ta;
+        async function replaceSuperImage(file, replaceRef, targetDir = '') {
+            if (!file) throw new Error('No file');
+            const formData = new FormData();
+            formData.append('image', file);
+            formData.append('replace_ref', replaceRef || '');
+            formData.append('target_dir', targetDir || '');
+            const res = await fetch('/api/super-admin/replace-image', {
+                method: 'POST',
+                credentials: 'include',
+                body: formData
             });
+            if (!res.ok) throw new Error('replace failed');
+            return await res.json().catch(() => ({}));
+        }
 
-            if (purchases.length === 0) {
+        async function loadAdminData() {
+            if (currentAdminRole === 'super_admin') {
+                const offeringsData = await apiGet('/api/nerchas');
+                renderOfferings(Array.isArray(offeringsData.offerings) ? offeringsData.offerings : []);
+            } else {
+                renderOfferings([]);
+            }
+
+            purchasesList.innerHTML = '';
+            if (currentAdminRole === 'super_admin') {
+                const purchasesData = await apiGet('/api/purchases');
+                const purchases = Array.isArray(purchasesData.purchases) ? purchasesData.purchases : [];
+                purchases.sort((a, b) => {
+                    const tb = Number(b.timestamp) || Date.parse(b.date || '') || 0;
+                    const ta = Number(a.timestamp) || Date.parse(a.date || '') || 0;
+                    return tb - ta;
+                });
+
+                if (purchases.length === 0) {
+                    const li = document.createElement('li');
+                    li.style.fontWeight = '600';
+                    li.style.color = 'var(--medium-gray)';
+                    li.textContent = 'No purchases yet.';
+                    purchasesList.appendChild(li);
+                } else {
+                    purchases.forEach(p => {
+                        const li = document.createElement('li');
+                        li.style.fontWeight = '600';
+                        li.style.color = 'var(--dark-charcoal)';
+                        li.textContent = `Name: ${p.name || '-'} | Address: ${p.address || '-'} | Phone: ${p.phone || '-'} | Offering: ${p.malayalam || p.english || '-'} | Date: ${p.date || '-'} | Time: ${p.time || '-'}`;
+                        purchasesList.appendChild(li);
+                    });
+                }
+            } else {
                 const li = document.createElement('li');
                 li.style.fontWeight = '600';
                 li.style.color = 'var(--medium-gray)';
-                li.textContent = 'No purchases yet.';
+                li.textContent = 'Purchases are available only for super admin.';
                 purchasesList.appendChild(li);
-            } else {
-                purchases.forEach(p => {
-                    const li = document.createElement('li');
-                    li.style.fontWeight = '600';
-                    li.style.color = 'var(--dark-charcoal)';
-                    li.textContent = `Name: ${p.name || '-'} | Address: ${p.address || '-'} | Phone: ${p.phone || '-'} | Offering: ${p.malayalam || p.english || '-'} | Date: ${p.date || '-'} | Time: ${p.time || '-'}`;
-                    purchasesList.appendChild(li);
-                });
             }
 
             const galleryData = await apiGet('/api/gallery');
@@ -409,42 +633,46 @@
                 if (liveYoutubeUrlInput) liveYoutubeUrlInput.value = lk === 'youtube' ? lu : '';
             } catch (e) {}
 
-            try {
-                const cal = await apiGet('/api/calendar');
-                const gridEl = document.getElementById('calendar-admin-grid');
-                if (gridEl) {
-                    const imgs = Array.isArray(cal.images) ? cal.images : [];
-                    gridEl.innerHTML = '';
-                    imgs.forEach((fn) => {
-                        const div = document.createElement('div');
-                        div.className = 'gallery-admin-item';
-                        div.innerHTML = `
-                            <img class="gallery-admin-thumb" src="assets/calendar/${fn}" alt="">
-                            <span style="font-size:0.8rem;word-break:break-word;text-align:center;font-weight:600;">${fn}</span>
-                            <button type="button" class="btn btn-secondary-dark calendar-delete-btn" data-file="${fn.replace(/"/g, '&quot;')}"><i class="fas fa-trash"></i> Delete</button>
-                        `;
-                        gridEl.appendChild(div);
-                    });
-                    gridEl.querySelectorAll('.calendar-delete-btn').forEach(btn => {
-                        btn.addEventListener('click', async () => {
-                            const filename = btn.dataset.file;
-                            try {
-                                await apiPost('/api/calendar/delete', { filename });
-                                await loadAdminData();
-                            } catch (e) {}
+            if (currentAdminRole === 'super_admin') {
+                try {
+                    const cal = await apiGet('/api/calendar');
+                    const gridEl = document.getElementById('calendar-admin-grid');
+                    if (gridEl) {
+                        const imgs = Array.isArray(cal.images) ? cal.images : [];
+                        gridEl.innerHTML = '';
+                        imgs.forEach((fn) => {
+                            const div = document.createElement('div');
+                            div.className = 'gallery-admin-item';
+                            div.innerHTML = `
+                                <img class="gallery-admin-thumb" src="assets/calendar/${fn}" alt="">
+                                <span style="font-size:0.8rem;word-break:break-word;text-align:center;font-weight:600;">${fn}</span>
+                                <button type="button" class="btn btn-secondary-dark calendar-delete-btn" data-file="${fn.replace(/"/g, '&quot;')}"><i class="fas fa-trash"></i> Delete</button>
+                            `;
+                            gridEl.appendChild(div);
                         });
-                    });
-                    if (imgs.length === 0) {
-                        const p = document.createElement('p');
-                        p.style.cssText = 'color:var(--medium-gray);font-weight:600;margin:0;';
-                        p.textContent = 'No calendar images in assets/calendar/. Upload to add.';
-                        gridEl.appendChild(p);
+                        gridEl.querySelectorAll('.calendar-delete-btn').forEach(btn => {
+                            btn.addEventListener('click', async () => {
+                                const filename = btn.dataset.file;
+                                try {
+                                    await apiPost('/api/calendar/delete', { filename });
+                                    await loadAdminData();
+                                } catch (e) {}
+                            });
+                        });
+                        if (imgs.length === 0) {
+                            const p = document.createElement('p');
+                            p.style.cssText = 'color:var(--medium-gray);font-weight:600;margin:0;';
+                            p.textContent = 'No calendar images in assets/calendar/. Upload to add.';
+                            gridEl.appendChild(p);
+                        }
                     }
-                }
-            } catch (e) {}
+                } catch (e) {}
+            }
+            await loadRoleAwareContentEditors();
         }
 
         async function flushAutoSaveOfferings() {
+            if (currentAdminRole !== 'super_admin') return;
             if (offeringsSaveTimer) {
                 clearTimeout(offeringsSaveTimer);
                 offeringsSaveTimer = null;
@@ -478,7 +706,10 @@
 
         document.addEventListener('DOMContentLoaded', async () => {
             try {
-                await apiGet('/api/purchases');
+                const me = await apiGet('/api/me');
+                currentAdminRole = me.role || '';
+                currentAdminUsername = me.username || '';
+                applyRoleUI();
                 showAdminUI();
                 await loadAdminData();
             } catch (e) {
@@ -495,7 +726,7 @@
                 const password = document.getElementById('admin-password').value.trim();
 
                 try {
-                    await fetch('/api/login', {
+                    const authData = await fetch('/api/login', {
                         method: 'POST',
                         credentials: 'include',
                         headers: { 'Content-Type': 'application/json' },
@@ -505,6 +736,9 @@
                         return res.json().catch(() => ({}));
                     });
 
+                    currentAdminRole = authData.role || '';
+                    currentAdminUsername = authData.username || '';
+                    applyRoleUI();
                     showAdminUI();
                     await loadAdminData();
                 } catch (err) {
@@ -520,6 +754,9 @@
                 } finally {
                     showLoginUI();
                     loginError.textContent = '';
+                    currentAdminRole = '';
+                    currentAdminUsername = '';
+                    applyRoleUI();
                 }
             });
         }
@@ -639,6 +876,115 @@
                 }
             });
         }
+
+        if (addLiveScheduleBtn) {
+            addLiveScheduleBtn.addEventListener('click', () => {
+                const rows = collectLiveScheduleRows();
+                rows.push({ time: '', title: '', notes: '' });
+                renderLiveSchedule(rows);
+            });
+        }
+
+        if (saveLiveScheduleBtn) {
+            saveLiveScheduleBtn.addEventListener('click', async () => {
+                try {
+                    liveScheduleStatus.textContent = 'Saving...';
+                    await apiPut('/api/live-schedule', { items: collectLiveScheduleRows() });
+                    liveScheduleStatus.textContent = 'Saved';
+                } catch (e) {
+                    liveScheduleStatus.textContent = 'Save failed';
+                }
+            });
+        }
+
+        function bindSuperSave(buttonId, statusId, handler) {
+            const btn = document.getElementById(buttonId);
+            const st = document.getElementById(statusId);
+            if (!btn || !st) return;
+            btn.addEventListener('click', async () => {
+                try {
+                    st.textContent = 'Saving...';
+                    await handler();
+                    st.textContent = 'Saved';
+                } catch (e) {
+                    st.textContent = 'Save failed';
+                }
+            });
+        }
+
+        bindSuperSave('save-homepage-content-btn', 'homepage-content-status', async () => {
+            await apiPut('/api/homepage-content', {
+                hero_desktop_image: (document.getElementById('super-hero-desktop').value || '').trim(),
+                hero_mobile_image: (document.getElementById('super-hero-mobile').value || '').trim()
+            });
+        });
+        bindSuperSave('save-about-content-btn', 'about-content-status', async () => {
+            await apiPut('/api/about-content', {
+                image: (document.getElementById('super-about-image').value || '').trim(),
+                title: 'About Piravom Valiyapalli',
+                paragraphs: (document.getElementById('super-about-text').value || '').split('\n').map(s => s.trim()).filter(Boolean)
+            });
+        });
+        bindSuperSave('save-history-content-btn', 'history-content-status', async () => {
+            await apiPut('/api/history-content', {
+                history_title: (document.getElementById('super-history-title').value || '').trim(),
+                history_text: (document.getElementById('super-history-text').value || '').trim(),
+                old_history_title: (document.getElementById('super-old-history-title').value || '').trim(),
+                old_history_text: (document.getElementById('super-old-history-text').value || '').trim(),
+                images: (document.getElementById('super-history-images').value || '').split(',').map(s => s.trim()).filter(Boolean)
+            });
+        });
+        bindSuperSave('save-events-content-btn', 'events-content-status', async () => {
+            const parsed = JSON.parse(document.getElementById('super-events-json').value || '[]');
+            await apiPut('/api/events', { events: Array.isArray(parsed) ? parsed : [] });
+        });
+        bindSuperSave('save-priests-content-btn', 'priests-content-status', async () => {
+            const parsed = JSON.parse(document.getElementById('super-priests-json').value || '[]');
+            await apiPut('/api/priests', { priests: Array.isArray(parsed) ? parsed : [] });
+        });
+        bindSuperSave('save-hkmedia-content-btn', 'hkmedia-content-status', async () => {
+            await apiPut('/api/hkmedia-content', {
+                logo: (document.getElementById('super-hkmedia-logo').value || '').trim(),
+                description: (document.getElementById('super-hkmedia-description').value || '').trim(),
+                contacts: (document.getElementById('super-hkmedia-contacts').value || '').split(',').map(s => s.trim()).filter(Boolean)
+            });
+        });
+
+        function bindReplaceImageButton(buttonId, fileId, refId, statusId, targetDir = '') {
+            const btn = document.getElementById(buttonId);
+            const fileInput = document.getElementById(fileId);
+            const refInput = document.getElementById(refId);
+            const st = document.getElementById(statusId);
+            if (!btn || !fileInput || !refInput || !st) return;
+            btn.addEventListener('click', async () => {
+                try {
+                    if (currentAdminRole !== 'super_admin' || currentAdminUsername !== 'jobin') {
+                        st.textContent = 'Only super admin jobin can use this action.';
+                        return;
+                    }
+                    const file = fileInput.files && fileInput.files[0];
+                    if (!file) {
+                        st.textContent = 'Please select an image file first.';
+                        return;
+                    }
+                    st.textContent = 'Replacing image...';
+                    const out = await replaceSuperImage(file, (refInput.value || '').trim(), targetDir);
+                    if (out && out.ref) refInput.value = out.ref;
+                    fileInput.value = '';
+                    st.textContent = 'Image replaced';
+                } catch (e) {
+                    st.textContent = 'Image replacement failed';
+                }
+            });
+        }
+
+        bindReplaceImageButton('replace-super-hero-desktop-btn', 'super-hero-desktop-file', 'super-hero-desktop', 'homepage-content-status');
+        bindReplaceImageButton('replace-super-hero-mobile-btn', 'super-hero-mobile-file', 'super-hero-mobile', 'homepage-content-status');
+        bindReplaceImageButton('replace-super-about-image-btn', 'super-about-image-file', 'super-about-image', 'about-content-status');
+        bindReplaceImageButton('replace-super-history-image-btn', 'super-history-replace-file', 'super-history-replace-target', 'history-content-status');
+        bindReplaceImageButton('replace-super-events-image-btn', 'super-events-replace-file', 'super-events-replace-target', 'events-content-status');
+        bindReplaceImageButton('replace-super-priests-image-btn', 'super-priests-replace-file', 'super-priests-replace-target', 'priests-content-status');
+        bindReplaceImageButton('replace-super-hkmedia-logo-btn', 'super-hkmedia-logo-file', 'super-hkmedia-logo', 'hkmedia-content-status');
 
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'hidden') flushAutoSaveOfferings();

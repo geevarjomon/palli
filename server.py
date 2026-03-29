@@ -27,9 +27,68 @@ GALLERY_META_PATH = DATA_DIR / "gallery.json"
 LIVE_LINK_PATH = DATA_DIR / "live_link.json"
 CALENDAR_FS_LOCK_PATH = DATA_DIR / "_calendar_fs_lock"
 COUPON_FS_LOCK_PATH = DATA_DIR / "_coupon_fs_lock"
+ASSET_FS_LOCK_PATH = DATA_DIR / "_asset_fs_lock"
+HOMEPAGE_CONTENT_PATH = DATA_DIR / "homepage.json"
+ABOUT_CONTENT_PATH = DATA_DIR / "about.json"
+HISTORY_CONTENT_PATH = DATA_DIR / "history_content.json"
+EVENTS_CONTENT_PATH = DATA_DIR / "events.json"
+PRIESTS_CONTENT_PATH = DATA_DIR / "priests.json"
+HKMEDIA_CONTENT_PATH = DATA_DIR / "hkmedia_content.json"
+LIVE_SCHEDULE_PATH = DATA_DIR / "live_schedule.json"
 
 SESSION_COOKIE = "admin_session"
 SESSION_TTL_SECONDS = 60 * 60 * 6  # 6 hours
+
+# SHA-256 credential hashes for built-in admin accounts.
+# Use ADMIN_CREDENTIAL_HASHES_JSON to override/extend in production:
+# {"username":"sha256hex", ...}
+_ADMIN_CREDENTIAL_HASHES = {
+    "media": "3af0dcb115a95e7e40417ddc5c0a2c2217ffeca1e9331a2ab34ecd0aa043b5c0",
+    "jobin": "9e85129d32f8e71aae86894e91c7b3d3c014fc4c39ef05dd7c89b32b4f6c891d",
+}
+_ADMIN_ROLES = {
+    "jobin": "super_admin",
+    "media": "limited_admin",
+}
+
+
+def _load_admin_credential_hashes():
+    raw = os.environ.get("ADMIN_CREDENTIAL_HASHES_JSON", "").strip()
+    if not raw:
+        return dict(_ADMIN_CREDENTIAL_HASHES)
+    try:
+        parsed = json.loads(raw)
+    except Exception:
+        return dict(_ADMIN_CREDENTIAL_HASHES)
+    if not isinstance(parsed, dict):
+        return dict(_ADMIN_CREDENTIAL_HASHES)
+
+    merged = dict(_ADMIN_CREDENTIAL_HASHES)
+    for k, v in parsed.items():
+        if not isinstance(k, str) or not isinstance(v, str):
+            continue
+        u = k.strip()
+        h = v.strip().lower()
+        if not u or len(h) != 64:
+            continue
+        merged[u] = h
+    return merged
+
+
+def _hash_password_sha256(password: str) -> str:
+    return hashlib.sha256((password or "").encode("utf-8")).hexdigest()
+
+
+def _is_valid_admin_login(username: str, password: str) -> bool:
+    user = (username or "").strip()
+    if not user:
+        return False
+    hashes = _load_admin_credential_hashes()
+    expected_hash = hashes.get(user)
+    if not expected_hash:
+        return False
+    incoming_hash = _hash_password_sha256((password or "").strip())
+    return hmac.compare_digest(expected_hash, incoming_hash)
 
 
 # Defaults tuned for large media uploads (override via env on hosting).
@@ -53,6 +112,76 @@ DEFAULT_OFFERINGS = [
     {"english": "prarthana", "malayalam": "പ്രാർത്ഥന", "price": 10, "image": ""},
     {"english": "panthrandu paithangulude nercha", "malayalam": "പന്ത്രണ്ടു പൈതങ്ങളുടെ നേർച്ച", "price": 500, "image": ""},
 ]
+
+DEFAULT_HOMEPAGE_CONTENT = {
+    "hero_desktop_image": "church_exterior.jpg.jpg",
+    "hero_mobile_image": "mobile_version.jpeg",
+}
+
+DEFAULT_ABOUT_CONTENT = {
+    "image": "about.jpg.jpeg",
+    "title": "About Piravom Valiyapalli",
+    "paragraphs": [
+        "Piravom Valiyapalli – St. Mary's Orthodox Syrian Cathedral stands as a testament to centuries of unwavering faith and rich Christian heritage in Kerala. Founded around the 6th century, this historic pilgrimage center is one of the most prominent Syrian Christian churches in the region.",
+        "Perched majestically on a hill near the Muvattupuzha River, approximately 35 kilometers from Kochi, the cathedral serves as a spiritual beacon for thousands of devotees. As a vital part of the Malankara Orthodox Syrian Church, it continues to preserve ancient traditions while embracing the spiritual needs of contemporary believers.",
+        "The church's significance extends beyond its architectural beauty; it represents the enduring legacy of Syrian Christianity in India and serves as a bridge between ancient apostolic traditions and modern spiritual practice.",
+    ],
+}
+
+DEFAULT_HISTORY_CONTENT = {
+    "history_title": "HISTORY",
+    "history_text": "PIRAVOM VALIYA PALLY which is one of the most ancient and prominent church in Kerala stands on a lovely hilltop on the eastern bank of the Muvattupuzha river at Piravom, 35 Kms east of Kochi. Adorned with all the majestic beauty of nature, this Church is believed to be as old as the Christianity. Its lamp, the light of hope, is kept burning perpetually throughout day and night, a peculiar feature! Though the Church is named after St. Mary, it is popularly known as the 'Church of the Kings' (“Rajakkalude Pally”). People from various parts of the country irrespective of caste, creed and religion reach this pilgrim centre for consolation and comfort with offerings to their ‘Kings’ who never refuse the prayers and tears of the devotees. This pilgrim centre stands as a fort of refuge, showering blessings, ecstasy, complacence and solace to millions of people far and near. The church has been invariably known as Piravom Valiyapally, Morth Mariyam Pally, Rajakkalude Pally, St.Mary’s Jacobite Syrian Chathedral etc.. As legends say, it is the first Christian church in the world, and it is the only church in the name of the Holy Kings (MAGI) which stands on the solid rock of Christian faith. It is one among the rare churches in Malankara where there has been daily Holy Mass from very olden times. There is the \"Vishudha Moonninmel Qurbono\" (The Holy Mass offered jointly by three priests) almost daily and there are two Holy Masses one after the other on Sundays. Pilgrims from far and near come to pray for consolation and comfort. Many parishioners come daily in the afternoon to pray and they light candles in the church and at the tombs of their forefathers in the graveyard, which is another significance of this church among the Churches in Malankara. This church remains loyal to the Patriarch of Antioch, seated on the Holy Apostolic throne of St. Peter.",
+    "old_history_title": "Old History",
+    "old_history_text": "About 2000 years ago, \"…after the birth of Jesus Christ in Bethlehem of Judaea, in the days of king Herod the \"Wisemen\" from the east (The Magi) reached Bethlehem through Jerusalem. The \"star\" they saw in the east was moving to direct them till they reached the birthplace of Infant Jesus… They saw the young child on the lap of mother Mary, knelt down and worshipped him. They opened their treasures and presented gifts to him: Gold, Frankincense, and Myrrh (St. Mathew 2:1-11) And they returned with exceeding joy and satisfaction to their home land in the east. The Wisemen (Holy kings) were scholars, rulers and devotees. The legends name them as Melchior, Gaspar and Balthazar. Old Melchior, middle aged Gaspar and young Belthazar visited Infant Jesus. When they reached back their homeland, they built an edifice in the Indian style and here they began to worship the Holy infant. As such Piravom Valiyapally is the first church in the world, where worshipping Jesus Christ started. During the 5th Century, this building may have been rebuilt as a Christian church as we now see. Evidences are many which goes to prove this traditional faith. The commercial connection of Kerala with the western countries and the astrological competence of Kerala are only some. The westerners were visiting Kerala for the business of spices. The major part of the gift presented by the Holy Kings was spices. The Holy Book says that the wise men came from the East. Aryabhata, Vararuchi and Sankaranarayana are examples for the fact that Kerala has been famous for astronomy since olden times. Widely famous astrological centre, the ‘Pazhoor Padippura’ very near to this church is also an evidence to reach to this conclusion. \"The place-name Piravom itself is related to 'piravi' (Birth)\". Many people are of such opinions. It is seen in the History of St.Thomas (Page. 15; Suriyani Sabha, Kaniyanparambil Kurian Corepiscopa) that the ‘Megusans’ (MAGI), who made offerings to Infant Jesus had been sanctified as Christians in India by St.Thomas, when he was in missionary works in Kerala. It is believed that, in the beginning, this church building was in the architectural style of Hindu Temples. But later during the flourishing of the Persian culture, the church building was renovated adopting the Persian architecture. The picture of fish, an ancient Christian emblem has a venerable place in the church. The Church was built as a strong fort; having been built in the periods of \"Padayottam\" (civil wars and banditry) its walls are more than four feet in thickness.",
+    "images": [
+        "gallery/church_exterior.jpg.jpg",
+        "gallery/church_night.jpg.jpg",
+        "about.jpg.jpeg",
+        "gallery/649334100_1337804095050528_5143294464664934259_n.jpg",
+    ],
+}
+
+DEFAULT_EVENTS_CONTENT = {
+    "events": [
+        {"date": "January 1 – 6", "event": "Danaha Perunal", "description": "Join us for this sacred celebration at Piravom Valiyapalli.", "image": "danaha.jpeg"},
+        {"date": "March 15 – 19", "event": "Convention", "description": "Join us for this sacred celebration at Piravom Valiyapalli.", "image": "convention.jpeg"},
+        {"date": "March 25", "event": "Vachanipp Perunall", "description": "Join us for this sacred celebration at Piravom Valiyapalli.", "image": "vachanipp.jpeg"},
+        {"date": "March 29", "event": "Oshana", "description": "Join us for this sacred celebration at Piravom Valiyapalli.", "image": "oshana.jpeg"},
+        {"date": "April 2", "event": "Pesaha Vyazham", "description": "Join us for this sacred celebration at Piravom Valiyapalli.", "image": "pesaha.jpg"},
+        {"date": "April 3", "event": "Good Friday", "description": "Join us for this sacred celebration at Piravom Valiyapalli.", "image": "friday.jpeg"},
+        {"date": "April 4", "event": "Holy Saturday", "description": "Join us for this sacred celebration at Piravom Valiyapalli.", "image": "saturday.jpg"},
+        {"date": "April 5", "event": "Easter", "description": "Join us for this sacred celebration at Piravom Valiyapalli.", "image": "easter.jpg"},
+        {"date": "April 5", "event": "Paithel Nercha", "description": "Join us for this sacred celebration at Piravom Valiyapalli.", "image": "nercha.jpeg"},
+        {"date": "April 19", "event": "Paithel Vechoot Nercha", "description": "Join us for this sacred celebration at Piravom Valiyapalli.", "image": "paithel.jpeg"},
+        {"date": "May 6 – 7", "event": "Vishudha Geevarghese Sahadayude Perunal", "description": "Join us for this sacred celebration at Piravom Valiyapalli.", "image": "geevarghese.jpeg"},
+        {"date": "June 29", "event": "Sleeha Perunal", "description": "Join us for this sacred celebration at Piravom Valiyapalli.", "image": "sleeha.jpeg"},
+        {"date": "August 14 – 15", "event": "Vishudha Maadhavinte Vaagippu Perunal", "description": "Join us for this sacred celebration at Piravom Valiyapalli.", "image": "maadhavu.jpeg"},
+        {"date": "October 7 – 8", "event": "Kallitta Perunal", "description": "Join us for this sacred celebration at Piravom Valiyapalli.", "image": "kallitta.jpeg"},
+        {"date": "December 25", "event": "Christmas", "description": "Join us for this sacred celebration at Piravom Valiyapalli.", "image": "christmas.jpeg"},
+    ]
+}
+
+DEFAULT_PRIESTS_CONTENT = {
+    "priests": [
+        {"name": "Fr. Benoy John", "phone": "+91 94953 14833", "image": "benoy.jpeg", "is_vicar": False},
+        {"name": "Fr. Elias Cherukattu", "phone": "+91 9447820111", "image": "elias.jpeg", "is_vicar": True},
+        {"name": "Fr. Babu Abraham", "phone": "+91 96455 94306", "image": "babu.jpeg", "is_vicar": False},
+    ]
+}
+
+DEFAULT_HKMEDIA_CONTENT = {
+    "logo": "hkmedia.jpeg",
+    "description": "HK Media is the dedicated media and communications team of Piravom Valiyapalli, committed to delivering high-quality digital coverage for all church events and activities. As the official media wing of Holy Kings Media, the team specializes in live streaming, event documentation, photography, videography, and content production, ensuring that every significant moment is captured and shared with clarity and professionalism. With a strong focus on technical excellence and visual storytelling, HK Media plays a vital role in connecting the church community both locally and globally, maintaining a consistent and engaging digital presence across platforms.",
+    "contacts": ["9446965149", "99955 59133", "8714746599"],
+}
+
+DEFAULT_LIVE_SCHEDULE = {
+    "items": [
+        {"time": "6:30 AM", "title": "Morning Qurbana", "notes": ""},
+        {"time": "6:00 PM", "title": "Evening Prayer", "notes": ""},
+        {"time": "8:00 AM", "title": "Sunday Special Qurbana", "notes": "Sunday"},
+    ]
+}
 
 
 SESSIONS = {}  # token -> {created_at: float}
@@ -85,6 +214,20 @@ def ensure_data_files():
 
     if not LIVE_LINK_PATH.exists():
         LIVE_LINK_PATH.write_text(json.dumps({"url": "", "kind": ""}, ensure_ascii=False, indent=2), encoding="utf-8")
+    if not HOMEPAGE_CONTENT_PATH.exists():
+        HOMEPAGE_CONTENT_PATH.write_text(json.dumps(DEFAULT_HOMEPAGE_CONTENT, ensure_ascii=False, indent=2), encoding="utf-8")
+    if not ABOUT_CONTENT_PATH.exists():
+        ABOUT_CONTENT_PATH.write_text(json.dumps(DEFAULT_ABOUT_CONTENT, ensure_ascii=False, indent=2), encoding="utf-8")
+    if not HISTORY_CONTENT_PATH.exists():
+        HISTORY_CONTENT_PATH.write_text(json.dumps(DEFAULT_HISTORY_CONTENT, ensure_ascii=False, indent=2), encoding="utf-8")
+    if not EVENTS_CONTENT_PATH.exists():
+        EVENTS_CONTENT_PATH.write_text(json.dumps(DEFAULT_EVENTS_CONTENT, ensure_ascii=False, indent=2), encoding="utf-8")
+    if not PRIESTS_CONTENT_PATH.exists():
+        PRIESTS_CONTENT_PATH.write_text(json.dumps(DEFAULT_PRIESTS_CONTENT, ensure_ascii=False, indent=2), encoding="utf-8")
+    if not HKMEDIA_CONTENT_PATH.exists():
+        HKMEDIA_CONTENT_PATH.write_text(json.dumps(DEFAULT_HKMEDIA_CONTENT, ensure_ascii=False, indent=2), encoding="utf-8")
+    if not LIVE_SCHEDULE_PATH.exists():
+        LIVE_SCHEDULE_PATH.write_text(json.dumps(DEFAULT_LIVE_SCHEDULE, ensure_ascii=False, indent=2), encoding="utf-8")
 
     migrate_live_link_schema()
 
@@ -522,37 +665,89 @@ if not _SESSION_HMAC_SECRET:
 _SESSION_HMAC_SECRET_BYTES = _SESSION_HMAC_SECRET.encode("utf-8")
 
 
-def _sign_session(nonce: str, ts_int: int) -> str:
-    msg = f"{nonce}|{ts_int}".encode("utf-8")
+def _sign_session(*parts) -> str:
+    msg = "|".join(str(p) for p in parts).encode("utf-8")
     return hmac.new(_SESSION_HMAC_SECRET_BYTES, msg, hashlib.sha256).hexdigest()
 
 
-def _make_session_cookie_value(ts_int=None) -> str:
+def _role_for_username(username: str) -> str:
+    return _ADMIN_ROLES.get((username or "").strip(), "limited_admin")
+
+
+def _make_session_cookie_value(username="", role="", ts_int=None) -> str:
     if ts_int is None:
         ts_int = int(time.time())
     nonce = secrets.token_urlsafe(16)
+    if username and role:
+        u_enc = urllib.parse.quote((username or "").strip(), safe="")
+        r_enc = urllib.parse.quote((role or "").strip(), safe="")
+        sig = _sign_session(nonce, int(ts_int), u_enc, r_enc)
+        return f"{nonce}.{int(ts_int)}.{u_enc}.{r_enc}.{sig}"
     sig = _sign_session(nonce, int(ts_int))
     return f"{nonce}.{int(ts_int)}.{sig}"
 
 
-def is_logged_in() -> bool:
+def get_session_user():
     value = request.cookies.get(SESSION_COOKIE)
     if not value:
-        return False
+        return None
     parts = value.split(".")
-    if len(parts) != 3:
-        return False
-    nonce, ts_s, sig = parts
+    if len(parts) not in (3, 5):
+        return None
+    nonce = parts[0]
+    ts_s = parts[1]
     try:
         ts_int = int(ts_s)
     except Exception:
-        return False
-    expected = _sign_session(nonce, ts_int)
-    if not hmac.compare_digest(expected, sig):
-        return False
+        return None
     if time.time() - ts_int > SESSION_TTL_SECONDS:
-        return False
-    return True
+        return None
+
+    # Backward-compat for older cookies without role claims.
+    if len(parts) == 3:
+        sig = parts[2]
+        expected = _sign_session(nonce, ts_int)
+        if not hmac.compare_digest(expected, sig):
+            return None
+        return {"username": "legacy", "role": "super_admin", "ts": ts_int}
+
+    u_enc = parts[2]
+    r_enc = parts[3]
+    sig = parts[4]
+    expected = _sign_session(nonce, ts_int, u_enc, r_enc)
+    if not hmac.compare_digest(expected, sig):
+        return None
+    username = urllib.parse.unquote(u_enc).strip()
+    role = urllib.parse.unquote(r_enc).strip()
+    if role not in ("super_admin", "limited_admin"):
+        return None
+    return {"username": username, "role": role, "ts": ts_int}
+
+
+def is_logged_in() -> bool:
+    return bool(get_session_user())
+
+
+def require_roles(*allowed_roles):
+    if not is_logged_in():
+        return False, json_response(401, {"error": "unauthorized"})
+    if not allowed_roles:
+        return True, None
+    session_user = get_session_user() or {}
+    role = (session_user.get("role") or "").strip()
+    if role not in allowed_roles:
+        return False, json_response(403, {"error": "forbidden"})
+    return True, None
+
+
+def require_jobin_super_admin():
+    ok, resp = require_roles("super_admin")
+    if not ok:
+        return False, resp
+    session_user = get_session_user() or {}
+    if (session_user.get("username") or "").strip() != "jobin":
+        return False, json_response(403, {"error": "forbidden"})
+    return True, None
 
 
 _RATE_GUARD = threading.Lock()
@@ -686,8 +881,9 @@ def api_get_nerchas():
 
 @app.route("/api/nerchas", methods=["PUT"])
 def api_put_nerchas():
-    if not is_logged_in():
-        return json_response(401, {"error": "unauthorized"})
+    ok, resp = require_roles("super_admin")
+    if not ok:
+        return resp
     body = request.get_json(silent=True)
     if not isinstance(body, dict):
         body = {}
@@ -715,8 +911,9 @@ def api_put_nerchas():
 
 @app.route("/api/purchases", methods=["GET"])
 def api_get_purchases():
-    if not is_logged_in():
-        return json_response(401, {"error": "unauthorized"})
+    ok, resp = require_roles("super_admin")
+    if not ok:
+        return resp
     data = read_json_file(PURCHASES_PATH)
     return json_response(200, {"purchases": data.get("purchases", [])})
 
@@ -733,8 +930,9 @@ def api_get_gallery():
 
 @app.route("/api/gallery/upload", methods=["POST"])
 def api_upload_gallery():
-    if not is_logged_in():
-        return json_response(401, {"error": "unauthorized"})
+    ok, resp = require_roles("super_admin", "limited_admin")
+    if not ok:
+        return resp
 
     ctype = request.content_type or ""
     if "multipart/form-data" not in ctype:
@@ -799,8 +997,9 @@ def api_upload_gallery():
 
 @app.route("/api/gallery/delete", methods=["POST"])
 def api_delete_gallery():
-    if not is_logged_in():
-        return json_response(401, {"error": "unauthorized"})
+    ok, resp = require_roles("super_admin", "limited_admin")
+    if not ok:
+        return resp
 
     body = request.get_json(silent=True)
     if not isinstance(body, dict):
@@ -825,8 +1024,9 @@ def api_delete_gallery():
 
 @app.route("/api/nercha-image/upload", methods=["POST"])
 def api_upload_nercha_image():
-    if not is_logged_in():
-        return json_response(401, {"error": "unauthorized"})
+    ok, resp = require_roles("super_admin")
+    if not ok:
+        return resp
 
     ctype = request.content_type or ""
     if "multipart/form-data" not in ctype:
@@ -888,8 +1088,9 @@ def api_get_calendar():
 
 @app.route("/api/calendar/upload", methods=["POST"])
 def api_upload_calendar():
-    if not is_logged_in():
-        return json_response(401, {"error": "unauthorized"})
+    ok, resp = require_roles("super_admin")
+    if not ok:
+        return resp
 
     ctype = request.content_type or ""
     if "multipart/form-data" not in ctype:
@@ -926,8 +1127,9 @@ def api_upload_calendar():
 
 @app.route("/api/calendar/delete", methods=["POST"])
 def api_delete_calendar():
-    if not is_logged_in():
-        return json_response(401, {"error": "unauthorized"})
+    ok, resp = require_roles("super_admin")
+    if not ok:
+        return resp
 
     body = request.get_json(silent=True)
     if not isinstance(body, dict):
@@ -1028,6 +1230,333 @@ def api_purchase():
     return json_response(200, {"ok": True})
 
 
+def _clean_text(val, max_len=20000):
+    s = str(val or "").strip()
+    if len(s) > max_len:
+        s = s[:max_len]
+    return s
+
+
+def _clean_image_ref(val):
+    s = _clean_text(val, 255)
+    if not s:
+        return ""
+    if "/" in s:
+        parts = [sanitize_filename(p) for p in s.split("/") if p]
+        if not parts:
+            return ""
+        return "/".join(parts)
+    return sanitize_filename(s)
+
+
+def _normalize_asset_ref(ref):
+    """
+    Normalize to a safe path relative to /assets (no leading assets/).
+    Example inputs:
+      "assets/gallery/a.jpg" -> "gallery/a.jpg"
+      "gallery/a.jpg" -> "gallery/a.jpg"
+      "a.jpg" -> "a.jpg"
+    """
+    raw = _clean_text(ref, 512).replace("\\", "/").strip("/")
+    if raw.lower().startswith("assets/"):
+        raw = raw[7:]
+    if not raw:
+        return ""
+    parts = [sanitize_filename(p) for p in raw.split("/") if p]
+    if not parts:
+        return ""
+    return "/".join(parts)
+
+
+def _asset_ref_to_path(ref):
+    safe_ref = _normalize_asset_ref(ref)
+    if not safe_ref:
+        return "", None
+    assets_root = (ROOT_DIR / "assets").resolve()
+    target = (assets_root / safe_ref).resolve()
+    if assets_root not in target.parents and target != assets_root:
+        return "", None
+    return safe_ref, target
+
+
+def _read_json_with_default(path: Path, default_payload):
+    data = read_json_file(path)
+    if not isinstance(data, dict):
+        return dict(default_payload)
+    merged = dict(default_payload)
+    merged.update(data)
+    return merged
+
+
+@app.route("/api/homepage-content", methods=["GET"])
+def api_get_homepage_content():
+    data = _read_json_with_default(HOMEPAGE_CONTENT_PATH, DEFAULT_HOMEPAGE_CONTENT)
+    return json_response(200, data)
+
+
+@app.route("/api/homepage-content", methods=["PUT"])
+def api_put_homepage_content():
+    ok, resp = require_roles("super_admin")
+    if not ok:
+        return resp
+    body = request.get_json(silent=True) or {}
+    payload = {
+        "hero_desktop_image": _clean_image_ref(body.get("hero_desktop_image")),
+        "hero_mobile_image": _clean_image_ref(body.get("hero_mobile_image")),
+    }
+    with _lock_for_path(HOMEPAGE_CONTENT_PATH):
+        write_json_file(HOMEPAGE_CONTENT_PATH, payload)
+    return json_response(200, {"ok": True})
+
+
+@app.route("/api/about-content", methods=["GET"])
+def api_get_about_content():
+    data = _read_json_with_default(ABOUT_CONTENT_PATH, DEFAULT_ABOUT_CONTENT)
+    return json_response(200, data)
+
+
+@app.route("/api/about-content", methods=["PUT"])
+def api_put_about_content():
+    ok, resp = require_roles("super_admin")
+    if not ok:
+        return resp
+    body = request.get_json(silent=True) or {}
+    paragraphs = body.get("paragraphs", [])
+    clean_paragraphs = []
+    if isinstance(paragraphs, list):
+        for p in paragraphs:
+            t = _clean_text(p, 5000)
+            if t:
+                clean_paragraphs.append(t)
+    payload = {
+        "image": _clean_image_ref(body.get("image")),
+        "title": _clean_text(body.get("title"), 200),
+        "paragraphs": clean_paragraphs,
+    }
+    with _lock_for_path(ABOUT_CONTENT_PATH):
+        write_json_file(ABOUT_CONTENT_PATH, payload)
+    return json_response(200, {"ok": True})
+
+
+@app.route("/api/history-content", methods=["GET"])
+def api_get_history_content():
+    data = _read_json_with_default(HISTORY_CONTENT_PATH, DEFAULT_HISTORY_CONTENT)
+    return json_response(200, data)
+
+
+@app.route("/api/history-content", methods=["PUT"])
+def api_put_history_content():
+    ok, resp = require_roles("super_admin")
+    if not ok:
+        return resp
+    body = request.get_json(silent=True) or {}
+    images = body.get("images", [])
+    clean_images = []
+    if isinstance(images, list):
+        for img in images:
+            ref = _clean_image_ref(img)
+            if ref:
+                clean_images.append(ref)
+    payload = {
+        "history_title": _clean_text(body.get("history_title"), 120),
+        "history_text": _clean_text(body.get("history_text"), 30000),
+        "old_history_title": _clean_text(body.get("old_history_title"), 120),
+        "old_history_text": _clean_text(body.get("old_history_text"), 30000),
+        "images": clean_images[:12],
+    }
+    with _lock_for_path(HISTORY_CONTENT_PATH):
+        write_json_file(HISTORY_CONTENT_PATH, payload)
+    return json_response(200, {"ok": True})
+
+
+@app.route("/api/events", methods=["GET"])
+def api_get_events():
+    data = _read_json_with_default(EVENTS_CONTENT_PATH, DEFAULT_EVENTS_CONTENT)
+    events = data.get("events", [])
+    if not isinstance(events, list):
+        events = []
+    return json_response(200, {"events": events})
+
+
+@app.route("/api/events", methods=["PUT"])
+def api_put_events():
+    ok, resp = require_roles("super_admin")
+    if not ok:
+        return resp
+    body = request.get_json(silent=True) or {}
+    rows = body.get("events", [])
+    clean_rows = []
+    if isinstance(rows, list):
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            clean_rows.append(
+                {
+                    "date": _clean_text(row.get("date"), 80),
+                    "event": _clean_text(row.get("event"), 200),
+                    "description": _clean_text(row.get("description"), 1000),
+                    "image": _clean_image_ref(row.get("image")),
+                }
+            )
+    with _lock_for_path(EVENTS_CONTENT_PATH):
+        write_json_file(EVENTS_CONTENT_PATH, {"events": clean_rows})
+    return json_response(200, {"ok": True})
+
+
+@app.route("/api/priests", methods=["GET"])
+def api_get_priests():
+    data = _read_json_with_default(PRIESTS_CONTENT_PATH, DEFAULT_PRIESTS_CONTENT)
+    priests = data.get("priests", [])
+    if not isinstance(priests, list):
+        priests = []
+    return json_response(200, {"priests": priests})
+
+
+@app.route("/api/priests", methods=["PUT"])
+def api_put_priests():
+    ok, resp = require_roles("super_admin")
+    if not ok:
+        return resp
+    body = request.get_json(silent=True) or {}
+    rows = body.get("priests", [])
+    clean_rows = []
+    vicar_seen = False
+    if isinstance(rows, list):
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            is_vicar = bool(row.get("is_vicar"))
+            if is_vicar:
+                if vicar_seen:
+                    is_vicar = False
+                else:
+                    vicar_seen = True
+            clean_rows.append(
+                {
+                    "name": _clean_text(row.get("name"), 200),
+                    "phone": _clean_text(row.get("phone"), 80),
+                    "image": _clean_image_ref(row.get("image")),
+                    "is_vicar": is_vicar,
+                }
+            )
+    if clean_rows and not any(bool(p.get("is_vicar")) for p in clean_rows):
+        clean_rows[0]["is_vicar"] = True
+    with _lock_for_path(PRIESTS_CONTENT_PATH):
+        write_json_file(PRIESTS_CONTENT_PATH, {"priests": clean_rows})
+    return json_response(200, {"ok": True})
+
+
+@app.route("/api/hkmedia-content", methods=["GET"])
+def api_get_hkmedia_content():
+    data = _read_json_with_default(HKMEDIA_CONTENT_PATH, DEFAULT_HKMEDIA_CONTENT)
+    return json_response(200, data)
+
+
+@app.route("/api/hkmedia-content", methods=["PUT"])
+def api_put_hkmedia_content():
+    ok, resp = require_roles("super_admin")
+    if not ok:
+        return resp
+    body = request.get_json(silent=True) or {}
+    contacts = body.get("contacts", [])
+    clean_contacts = []
+    if isinstance(contacts, list):
+        for c in contacts:
+            t = _clean_text(c, 80)
+            if t:
+                clean_contacts.append(t)
+    payload = {
+        "logo": _clean_image_ref(body.get("logo")),
+        "description": _clean_text(body.get("description"), 12000),
+        "contacts": clean_contacts[:10],
+    }
+    with _lock_for_path(HKMEDIA_CONTENT_PATH):
+        write_json_file(HKMEDIA_CONTENT_PATH, payload)
+    return json_response(200, {"ok": True})
+
+
+@app.route("/api/live-schedule", methods=["GET"])
+def api_get_live_schedule():
+    data = _read_json_with_default(LIVE_SCHEDULE_PATH, DEFAULT_LIVE_SCHEDULE)
+    items = data.get("items", [])
+    if not isinstance(items, list):
+        items = []
+    return json_response(200, {"items": items})
+
+
+@app.route("/api/live-schedule", methods=["PUT"])
+def api_put_live_schedule():
+    ok, resp = require_roles("super_admin", "limited_admin")
+    if not ok:
+        return resp
+    body = request.get_json(silent=True) or {}
+    rows = body.get("items", [])
+    clean_rows = []
+    if isinstance(rows, list):
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            clean_rows.append(
+                {
+                    "time": _clean_text(row.get("time"), 80),
+                    "title": _clean_text(row.get("title"), 200),
+                    "notes": _clean_text(row.get("notes"), 400),
+                }
+            )
+    with _lock_for_path(LIVE_SCHEDULE_PATH):
+        write_json_file(LIVE_SCHEDULE_PATH, {"items": clean_rows})
+    return json_response(200, {"ok": True})
+
+
+@app.route("/api/super-admin/replace-image", methods=["POST"])
+def api_super_admin_replace_image():
+    ok, resp = require_jobin_super_admin()
+    if not ok:
+        return resp
+
+    if "image" not in request.files:
+        return json_response(400, {"error": "no_file"})
+
+    f = request.files.get("image")
+    if not f:
+        return json_response(400, {"error": "no_file"})
+
+    file_bytes = f.read() or b""
+    max_file_bytes = int(os.environ.get("MAX_FILE_BYTES", str(_DEFAULT_MAX_FILE)))
+    if len(file_bytes) > max_file_bytes:
+        return json_response(400, {"error": "file_too_large"})
+
+    original_name = sanitize_filename(f.filename or "")
+    suffix = Path(original_name).suffix.lower()
+    if suffix not in [".jpg", ".jpeg", ".png", ".gif", ".webp"]:
+        return json_response(400, {"error": "unsupported_image_type"})
+
+    replace_ref = request.form.get("replace_ref", "")
+    replace_ref = _normalize_asset_ref(replace_ref)
+    target_dir = _clean_text(request.form.get("target_dir", ""), 120).replace("\\", "/").strip("/")
+    target_dir = _normalize_asset_ref(target_dir)
+
+    if replace_ref:
+        final_ref = replace_ref
+    else:
+        if target_dir:
+            final_ref = f"{target_dir}/{original_name}"
+        else:
+            final_ref = original_name
+
+    safe_ref, out_path = _asset_ref_to_path(final_ref)
+    if not safe_ref or out_path is None:
+        return json_response(400, {"error": "invalid_target"})
+
+    with _lock_for_path(ASSET_FS_LOCK_PATH):
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        # Replace existing file in-place. This keeps references stable
+        # and avoids creating duplicate orphan files for jobin workflows.
+        out_path.write_bytes(file_bytes)
+
+    return json_response(200, {"ok": True, "ref": safe_ref})
+
+
 @app.route("/api/live-link", methods=["GET"])
 def api_live_link_get():
     data = read_json_file(LIVE_LINK_PATH)
@@ -1044,8 +1573,9 @@ def api_live_link_get():
 
 @app.route("/api/live-link", methods=["PUT"])
 def api_live_link_put():
-    if not is_logged_in():
-        return json_response(401, {"error": "unauthorized"})
+    ok, resp = require_roles("super_admin", "limited_admin")
+    if not ok:
+        return resp
     body = request.get_json(silent=True)
     if not isinstance(body, dict):
         body = {}
@@ -1070,9 +1600,10 @@ def api_login():
     username = (body.get("username") or "").strip()
     password = (body.get("password") or "").strip()
 
-    if username == "media" and password == "valiyapalli216":
-        token_value = _make_session_cookie_value()
-        resp = json_response(200, {"ok": True})
+    if _is_valid_admin_login(username, password):
+        role = _role_for_username(username)
+        token_value = _make_session_cookie_value(username=username, role=role)
+        resp = json_response(200, {"ok": True, "username": username, "role": role})
         resp.set_cookie(
             SESSION_COOKIE,
             token_value,
@@ -1086,6 +1617,21 @@ def api_login():
 
     _logger.warning("admin login failed")
     return json_response(401, {"error": "invalid_credentials"})
+
+
+@app.route("/api/me", methods=["GET"])
+def api_me():
+    session_user = get_session_user()
+    if not session_user:
+        return json_response(401, {"error": "unauthorized"})
+    return json_response(
+        200,
+        {
+            "ok": True,
+            "username": session_user.get("username", ""),
+            "role": session_user.get("role", ""),
+        },
+    )
 
 
 @app.route("/api/logout", methods=["POST"])
